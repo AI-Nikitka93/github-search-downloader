@@ -97,7 +97,7 @@ function Set-InstallerVersion {
         [string]$ReleaseVersion
     )
     $script = Get-Content -LiteralPath $InstallerPath -Raw -Encoding UTF8
-    $updated = $script -replace '(?m)^\$ProductVersion\s*=\s*".*"$', "`$ProductVersion = `"$ReleaseVersion`""
+    $updated = $script -replace '(?m)^\$ProductVersion\s*=\s*"[^"]*"\r?$', "`$ProductVersion = `"$ReleaseVersion`""
     if ($updated -eq $script -and $script -notmatch '(?m)^\$ProductVersion\s*=') {
         throw "Installer script does not declare ProductVersion: $InstallerPath"
     }
