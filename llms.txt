@@ -1,0 +1,52 @@
+# GitHub Search Downloader (llms.txt)
+> Machine-Readable Context Specification for Autonomous AI Agents
+
+## System Identity & Core Contracts
+```toon
+{
+  "system": {
+    "name": "github-search-downloader",
+    "version": "1.1.0",
+    "runtime": "Python 3.11+",
+    "os_target": "Windows 11 / Windows 10 x64",
+    "core_capability": "Bypasses GitHub 1,000 search result limit via recursive date-range sharding with parallel cloning, AI relevance filtering, and local SQLite/CSV metadata export."
+  },
+  "entry_points": {
+    "cli": "app.py",
+    "gui": "gui_app.py",
+    "gui_launcher": "start_gui.bat"
+  },
+  "security_model": {
+    "token_storage": "Windows DPAPI (%LOCALAPPDATA%\\GithubSearchDownloader\\secrets)",
+    "token_buffer_capacity": "520+ characters (compatible with variable-length ghs_ tokens)",
+    "plaintext_policy": "Zero plaintext tokens in config files or logs"
+  },
+  "cli_interface": {
+    "required_flags": ["--query <str>", "--output <path>"],
+    "critical_flags": {
+      "--dry-run": "Search and metadata export without git clone",
+      "--max-repos <int>": "Maximum repositories to fetch (0 = unlimited)",
+      "--incremental": "Skip repo_ids already present in output/metadata/search_*.json",
+      "--export-sqlite <path>": "Export metadata to local SQLite database",
+      "--export-csv": "Export metadata to CSV format",
+      "--graphql-enrich": "Token-backed metadata enrichment (releases, homepage, commit OID)",
+      "--deep-relevance": "Score repositories based on README and tree paths",
+      "--ai-filter": "Enable 2-phase AI relevance filtering via Ollama or OpenAI-compatible endpoint"
+    }
+  },
+  "verification_commands": {
+    "test_suite": "python -m unittest discover -s tests -p \"test_*.py\"",
+    "smoke_check": "python app.py --query \"test\" --output \".\\_smoke_output\\probe\" --dry-run --max-repos 5",
+    "ast_parity_check": "python scripts/verify_ast_parity.py"
+  }
+}
+```
+
+## Module Map
+- `src/github_harvester/service.py`: Central orchestration engine for validation, sharding, AI-filtering, enrichment, and batch download.
+- `src/github_harvester/github_api.py`: GitHub REST & GraphQL API client with date-range recursion, rate limit backoff, and tree fetching.
+- `src/github_harvester/downloader.py`: Multi-threaded git clone engine with shallow/partial clone profiles and process-tree timeout management (`taskkill /T /F`).
+- `src/github_harvester/ai_planner.py`: AI task adapter for Ollama (`/api/generate`, `/api/tags`) and OpenAI-compatible (`/chat/completions`, `/models`).
+- `src/github_harvester/secret_store.py`: DPAPI cryptographic token and key manager.
+- `src/github_harvester/exporters.py`: SQLite batch exporter (`executemany`) and CSV exporter.
+- `src/github_harvester/run_state.py`: Resumable run state tracker (`metadata/run_state_*.json`).

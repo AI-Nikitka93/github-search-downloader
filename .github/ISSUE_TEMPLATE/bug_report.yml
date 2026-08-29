@@ -1,0 +1,75 @@
+name: "Bug Report"
+description: "Submit a bug report to help improve GitHub Search Downloader."
+title: "[BUG]: "
+labels: ["bug", "triage"]
+type: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report.
+  - type: input
+    id: version
+    attributes:
+      label: "Application Version"
+      description: "Which version of GitHub Search Downloader are you using?"
+      placeholder: "e.g., 1.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: "Interface Used"
+      description: "Did the issue occur in the GUI, CLI, or both?"
+      options:
+        - "GUI (gui_app.py / start_gui.bat)"
+        - "CLI (app.py)"
+        - "Both"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: "Operating System"
+      description: "Select your Windows environment version."
+      options:
+        - "Windows 11 (x64)"
+        - "Windows 10 (x64)"
+        - "Windows Server"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "Clear and concise explanation of what happened."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Exact CLI command or sequence of GUI actions."
+      placeholder: |
+        1. Open GUI or run CLI with args: python app.py --query ...
+        2. Click 'Start' / execute command
+        3. Observe error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs & Error Output"
+      description: "Paste relevant output from console or debug log. Note: Sensitive tokens are automatically redacted."
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "Pre-flight Validation"
+      options:
+        - label: "I verified that this issue is reproducible on the latest release."
+          required: true
+        - label: "I confirmed that my Git installation is available in PATH."
+          required: true

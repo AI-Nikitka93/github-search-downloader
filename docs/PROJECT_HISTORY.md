@@ -1,0 +1,320 @@
+# Project History
+
+## 2026-02-11
+
+- Initialized project with a working Windows CLI for:
+  - GitHub repository search by query and filters.
+  - Date-range sharding to bypass GitHub Search API 1000-result cap.
+  - Parallel repository download via `git clone`.
+  - Metadata export to JSON for downstream AI analysis.
+- Added unit tests for:
+  - query construction,
+  - date range planning,
+  - repository de-duplication,
+  - path sanitization.
+- Added desktop GUI launcher:
+  - `gui_app.py` for running searches without CLI commands.
+  - `start_gui.bat` for double-click start on Windows.
+  - Real-time status, progress, and run log in the UI.
+- Refactored shared logic into `src/github_harvester/service.py` so GUI and CLI use the same execution pipeline.
+- Localized user-facing texts to Russian:
+  - GUI labels, buttons, validation messages, statuses, and logs.
+  - Runtime messages from service/API/downloader.
+- Improved repository folder naming:
+  - New format includes repository name plus keywords from description.
+  - Added duplicate detection for repeated runs even if descriptive suffix differs.
+- Improved long-run behavior and visibility:
+  - Added clone start logs so progress is visible immediately.
+  - Added safe timeout/error handling for `git clone` without crashing the whole run.
+  - Reduced default clone timeout from 900s to 300s.
+  - Added GUI field for clone timeout and set default max repositories to 100 for faster first runs.
+- Added live heartbeat and persistent run logs:
+  - During long clone operations, periodic log lines show elapsed seconds.
+  - Each run now writes a timestamped log file under `metadata`.
+- Hardened clone timeout handling:
+  - Replaced soft timeout approach with enforced process-tree termination (`taskkill /T /F`) on timeout.
+  - Prevented indefinitely hanging `git clone` on problematic repositories.
+- Updated GUI defaults:
+  - Default output folder is now `M:\Projects\GItHubProjektAI`.
+- Added run control and stability features:
+  - `Stop` button in GUI with graceful cancellation.
+  - Batch download mode to process repositories in chunks.
+  - Automatic retries for failed clones with configurable delay.
+  - Date-age filter (`max_age_years`) to skip very old repositories by default.
+- Added AI-driven task setup:
+  - New module `src/github_harvester/ai_planner.py`.
+  - Supports Ollama endpoints.
+  - Converts natural-language task into search/download parameters.
+  - Generates meaningful project subfolder name from task description.
+- Added dynamic Ollama model picker in GUI:
+  - Fetches актуальный список моделей через `/api/tags`.
+  - Allows selecting model from dropdown before applying AI command.
+- Fixed false instant completion in GUI runs:
+  - Added per-run event tagging (`run_id`) so stale events from prior runs are ignored.
+  - Cleared stale run events before each new start.
+  - Improved event polling lifecycle to continue while background threads are alive or queued events remain.
+- Improved GUI query handling for natural-language input:
+  - Added automatic safe query simplification for long plain-text tasks (keeps first 3 key terms).
+  - Preserves advanced GitHub syntax (`OR/AND/NOT`, parentheses, qualifiers like `topic:`).
+  - Shows normalization note in GUI log so user sees what was actually sent to GitHub search.
+- Added deep diagnostics for run debugging:
+  - New GUI debug logs in `debug_logs/gui_debug_*.log` with run lifecycle, event routing, and exceptions.
+  - Added GUI button `Открыть debug-лог`.
+  - Expanded runtime logs with full run parameters, found repo preview, per-repo clone path/message, and batch totals.
+- Improved clarity for "found but nothing downloaded" case:
+  - Added explicit message when all found repositories were skipped as already existing.
+  - Runtime log now writes a dedicated line that no new repositories were available for download.
+- Restored default GUI settings after internal diagnostics:
+  - Output folder returned to `M:\Projects\GItHubProjektAI`.
+  - `max_repos`, `batch_size`, and worker values reset from debug test values to practical defaults.
+- Improved search quality and start transparency:
+  - Query normalizer now uses broader OR-query form for plain long natural-language input.
+  - Added visible GUI start line with active `max_repos`, `batch_size`, `workers`, `skip_existing`, `dry_run`, and output path.
+  - Added explicit warning in GUI log when `max_repos=1`.
+  - Added guard for AI plan: very low `max_repos` values are auto-raised to 20 with a log note.
+- Fixed status overwrite during active run:
+  - `models_done/models_error` events no longer replace run status while search/download is executing.
+- Improved run visibility and API-limit behavior:
+  - GUI status now reflects key runtime stages from logs (searching, waiting for API limit, downloading, retries).
+  - Added automatic search optimization: date sharding is auto-disabled when `max_repos <= 1000` to reduce API calls and speed up response.
+- Hardened token handling in GUI:
+  - GUI token is no longer persisted in `gui_settings.json`.
+  - Added support for `GITHUB_TOKEN` environment variable fallback when GUI token field is empty.
+  - Added explicit run log line indicating token source (`manual`, `env`, or not set).
+  - Log redaction now masks bare GitHub token prefixes (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`) and token-only URL credentials, not only `token=` or `Authorization: Bearer` forms.
+- Added local protected GitHub API token storage:
+  - GUI can save/load/delete token through Windows DPAPI under `%LOCALAPPDATA%\GithubSearchDownloader\secrets`.
+  - After saving, the GUI token field is cleared so the token is not left visible in settings/state.
+  - CLI can run `--save-github-token`, `--show-token-status`, and `--delete-saved-github-token` without requiring query/output arguments.
+  - Token resolution now prefers explicit current-run input, then `GITHUB_TOKEN`, then local protected storage.
+  - Plaintext `token` values from config files are ignored for security.
+- Improved Ollama connection-failure UX:
+  - Connection refused errors such as `[WinError 10061]` are now translated into a user-facing instruction to start Ollama or fix the endpoint.
+  - The raw `urlopen error` text is no longer shown for the common local Ollama-not-running case.
+- Added universal AI provider support:
+  - Kept Ollama as the local provider and added `openai-compatible` `/chat/completions` + `/models` support.
+  - AI planner, autopilot, and AI relevance filter now share the same provider adapter.
+  - GUI can switch provider type, Base URL, model, provider profile, and local AI API key storage.
+  - CLI supports `--ai-provider`, `--ai-api-key`, `--ai-api-key-env`, `--save-ai-api-key`, `--show-ai-api-key-status`, and `--delete-saved-ai-api-key`.
+  - AI API keys are resolved from current-run input, env var, or Windows DPAPI local storage and are not saved in `gui_settings.json`.
+- Added optional superficial AI relevance filtering before clone:
+  - New GUI controls for AI filtering (`enabled`, `min score`, `max reviews`).
+  - AI filter uses Ollama model to quickly validate repository relevance by name/description/topics.
+  - Added expanded prefetch mode for AI filter and post-filter trimming to `max_repos`.
+  - Added CLI flags for AI filter configuration.
+- Optimized AI filter for speed:
+  - Introduced fast-path heuristic gating (`auto_keep` / `auto_drop`) without AI calls for obvious cases.
+  - AI calls now run only on a bounded "gray zone" subset.
+  - Reduced defaults for AI filter timeout and max reviews.
+
+
+## 2026-02-12
+
+- Tuned AI relevance filter for shallow fast analysis:
+  - Runtime AI filter timeout is clamped to 20 seconds.
+  - AI checks stop early when enough candidates are collected.
+  - Query term extraction now keeps short technical tokens (`ai`, `ml`, `llm`) and Cyrillic terms.
+  - Added heuristic supplemental fallback to avoid over-pruning in fast mode.
+  - Reduced practical defaults in GUI/CLI (`ai_timeout=30`, `ai_filter_max_reviews=10`).
+  - Fixed over-pruning case: when AI fast filter had 300 candidates it could keep only 1-2 repos; now it keeps a broader minimum candidate pool in fast mode.
+- Added quality profiles in GUI (`Точность`, `Баланс`, `Полнота`) for one-click search strategy selection.
+- Upgraded fast AI filtering strategy to preserve recall:
+  - Builds a wider review pool with exploration sampling from mid-ranked candidates.
+  - Keeps a larger minimum candidate set to reduce missing important repositories.
+  - Preserves strict date/quality filters to avoid old and irrelevant projects.
+- Improved production reliability and relevance quality:
+  - Added centralized `RunConfig` validation used by runtime and GUI integration checks.
+  - Added log redaction for sensitive fragments (`token`, `Authorization`, URL credentials) in service and GUI debug logs.
+  - Switched critical JSON writes (`gui_settings`, metadata, failed-clones report, run log bootstrap) to atomic file writes.
+  - Upgraded AI ranking to combined score (`text relevance + recency + popularity`) for better topical precision.
+  - Hardened AI-filter degraded mode: when model fails repeatedly, pipeline switches to deterministic heuristic fallback instead of dropping almost everything.
+  - Added metadata format versioning fields (`schema_version`, `producer`) for forward-compatible parsing.
+  - Added deterministic global sorting before `max_repositories` trimming to avoid biased early cutoff.
+  - For sharded search in `desc` mode, ranges are now processed from newer to older windows.
+  - Expanded tests for: config validation, log redaction, AI model outage fallback, global sorting/trimming behavior.
+- Fixed intermittent AI-planner model timeouts in GUI:
+  - Added adaptive retry strategy for Ollama planner calls (`timeout` escalation across retries).
+  - Added clear user-facing timeout/model-not-found errors instead of raw socket exceptions.
+  - Preserved fast AI-filter behavior (no extra retries there) to avoid slowing pre-download relevance checks.
+  - Added unit tests for retry-after-timeout and timeout error messaging.
+- Fixed under-retrieval for plain text queries:
+  - Added shared query normalization in backend (`2+` plain terms -> OR expression) for both GUI and CLI runs.
+  - Prevented overly strict implicit AND behavior that could reduce large topics to single-digit candidate pools.
+  - Added tests for normalization and advanced-query passthrough behavior.
+- Removed hard cap in AI pre-download filtering:
+  - AI filter is no longer implicitly capped near 40 kept repositories in fast mode.
+  - Target kept pool now scales with requested `max_repos` (`desired_keep`) so broad runs can keep 100+ candidates.
+  - Prefetch before AI filtering expanded for better recall (`max_repos=100` can prefetch up to 600 before scoring).
+  - Added regression test ensuring AI filter is not clipped to 40 when higher keep target is requested.
+- Added GUI autopilot mode:
+  - New button `Автопилот: ТЗ -> Запуск` in AI control block.
+  - Autopilot runs AI planning and starts collection automatically after successful parameter application.
+  - Added explicit autopilot stop message when AI planning fails.
+  - Autopilot button state is now synchronized with `is_running/ai_busy` to prevent conflicting actions.
+- Hardened autopilot against over-strict AI queries:
+  - If AI-generated query returns zero repositories, backend now performs one safe fallback expansion (relaxed OR-query) automatically.
+  - Fallback keeps original filters/sort/max_repos and only broadens query text.
+  - Added unit tests for strict-query relaxation helper and edge behavior.
+  - Verified scenario: strict AI query `topic:osint topic:ai-analysis created:>=2023-01-01` now auto-recovers from 0 to 100 kept candidates (dry-run).
+- Ensured end date is always current in GUI runs:
+  - `created_before` is auto-updated to today's date when settings are loaded.
+  - `created_before` is enforced to today's date again right before run config build.
+  - Prevents stale yesterday/old saved dates from silently narrowing search windows.
+- Improved autopilot parameter memory:
+  - Autopilot now applies a floor for `max_repos` based on remembered value + selected quality profile, so AI defaults do not force runs back to 100.
+  - If autopilot increases `max_repos`, it also scales `Макс. AI-проверок` to keep recall quality aligned.
+  - Manual `Применить ИИ-команду` behavior remains unchanged; memory floor applies only to autopilot mode.
+- Fixed GitHub API 422 failures for overloaded boolean queries:
+  - Added shared guard in query normalization: if query has more than 5 logical operators (`AND/OR/NOT`), it is auto-relaxed to a safe OR-query.
+  - Safe OR-query now uses at most 6 terms to stay within GitHub Search API operator constraints.
+  - Relaxed query builder now ignores terms that come right after `NOT` (prevents negative words from polluting fallback query).
+  - Added unit test coverage for overloaded boolean autopilot query normalization.
+- Added manual shortlist workflow in GUI:
+  - New action button `Предпросмотр и выбор` runs search in dry-run mode and opens an interactive candidate table.
+  - Preview table shows per-repository short summary, relevance score, and recommendation label (`Рекомендую / Можно взять / Низкий приоритет`).
+  - User can manually select/unselect repositories and run download only for the selected subset.
+  - Added backend API `run_download_for_repositories(...)` for download-only execution using existing retry/cancel/batch logic.
+  - Added metadata loader helper `load_repositories_from_metadata(...)` and tests for both new backend helpers.
+- Added autopilot-to-preview mode:
+  - New AI button `Автопилот: ТЗ -> Предпросмотр`.
+  - Flow: AI auto-configures parameters from task text, then automatically starts preview list instead of immediate clone.
+  - Existing `Автопилот: ТЗ -> Запуск` behavior is preserved for direct one-click download flow.
+- Improved preview quality and localization:
+  - If strict/complex query returns suspiciously small result count, backend now tries one safe relaxed-query expansion and keeps whichever result set is larger.
+  - This reduces cases where preview unexpectedly shows only a few repositories from an over-constrained AI query.
+  - Preview column `О чем` now uses a Russian summary template (language/stars/topics) instead of raw English GitHub description as primary text.
+- Added repository freshness column in preview:
+  - Preview table now shows `Обновлен` date from repository `updated_at` for faster manual triage.
+  - Added `Push` column (`pushed_at`) to distinguish real code updates from generic repository activity.
+- Added clickable repository navigation in preview:
+  - Double-click on repository name opens GitHub page in browser.
+  - Added explicit button `Открыть репозиторий` for selected row.
+- Clarified freshness semantics in preview UI:
+  - Renamed `Обновлен` to `Активность` and `Push` to `Код (push)`.
+  - Added explicit hint that code freshness should be judged by `Код (push)`, not generic repository activity.
+- Hardened query safety for autopilot and broad AI tasks:
+  - Added backend guard for advanced queries that contain only operators/qualifiers and no explicit search terms.
+  - Such queries are now auto-relaxed to a safe OR-query before GitHub request execution.
+  - Added run-time recovery path for GitHub `422 Validation Failed`: one safe fallback query is generated and retried automatically.
+  - GitHub API error extraction now includes detailed validation messages from `errors[]` to make failures diagnosable in GUI.
+- Improved practical AI-filter quality controls:
+  - Removed rigid 20-second clamp for AI-filter calls; effective timeout now follows user setting in safe range `5..120`.
+  - AI-check budget now scales with pool size and user `max_reviews` instead of hidden low cap.
+  - Increased AI time budget for better recall in high-volume runs where model latency is non-trivial.
+- Expanded regression coverage:
+  - Added tests for planner query sanitization (removing risky structured qualifiers from AI query text).
+  - Added tests for query normalization of qualifier-only operator queries.
+  - Added tests for run-time recovery after GitHub `422` on initial query.
+  - Added tests that ensure GitHub validation details are surfaced from API error payload.
+- Improved reliability and operator control for production runs:
+  - Fixed corrupted (mojibake) Russian runtime messages in `service.py` so run logs and validation errors are readable again.
+  - Added adaptive low-result expansion before AI-filtering: when candidate pool is too small, backend runs one widened pass (softer `min_stars`, language relaxed) and merges unique repositories.
+  - Added CLI config file support (`--config-file`) with compatibility mapping from `gui_settings.json`; direct CLI flags override config values.
+  - Added explicit CLI switch `--no-ai-filter` to disable AI filtering when config enables it.
+  - Hardened metadata loader compatibility: schema version validation, support for legacy `items` key, and clear error for unsupported future schema versions.
+  - Expanded tests for new behavior: config-file parsing/override, low-result pool expansion, metadata schema compatibility.
+  - Hardened run-log stability: multiline/control separators (`\r`, `\n`, `U+2028`, etc.) are now collapsed into one-line entries, preventing broken log lines during cancel/error edge cases.
+  - Added unit test for log-line normalization to keep logs machine-parseable.
+
+## 2026-06-02
+
+- Added production recovery and analytics features:
+  - `metadata/run_state_*.json` is created for clone runs and updated after each completed repository result.
+  - Retry clone results now update the same run-state entry, so resume sees the final clone status after recovered failures.
+  - CLI/GUI configs now support include/exclude keyword filters.
+  - `--incremental` skips repository IDs already recorded in previous metadata files under the output folder.
+  - `--metadata-file` can reuse saved search metadata without calling GitHub search again.
+  - `--resume-state-file` skips repositories already marked `cloned` or `skipped`.
+  - `--export-sqlite` writes repository/run metadata to a local SQLite database.
+  - Repository metadata now preserves forks, open issues, watchers, size, license, fork/archive flags, and visibility when GitHub returns them.
+  - SQLite export migrates older local schemas to include the richer metadata columns.
+  - Ollama planner/filter calls now send explicit runtime options (`temperature`, `num_ctx`, `num_predict`).
+  - GUI now includes Ollama provider profiles with endpoint/model/timeout/runtime option presets; CLI/config-file runs can set the same options.
+  - Git clone strategy is now explicit and configurable across downloader/service/CLI/GUI.
+  - Default clone strategy remains fast and disk-conscious (`depth=1`, partial blob filter, single branch, no tags), while full-history/all-branch/tagged runs are available through CLI/GUI settings.
+  - Added optional GitHub GraphQL enrichment for the final repository shortlist.
+  - GraphQL enrichment stores homepage URL, default branch commit metadata, latest release metadata, mirror/empty flags, node ID, and enrichment provenance in JSON/SQLite.
+  - GraphQL mode requires a GitHub token, uses bounded batches, and degrades to REST metadata with a run-log message if enrichment cannot run.
+  - Added optional deep README/code relevance scoring for the final repository shortlist.
+  - Deep relevance uses GitHub REST README and recursive Git tree paths after final filtering, stores only score/error fields, and can sort/filter checked repositories before metadata/SQLite/clone.
+  - CLI/GUI/config-file runs now expose `deep_relevance` settings and SQLite migrates older schemas to include deep relevance fields.
+- Improved release readiness:
+  - Added `pyproject.toml`, `.gitignore`, and `build_windows.ps1` for optional PyInstaller `.exe` builds.
+  - Added `release_windows.ps1` for Windows zip packaging, SHA256 checksums, release manifest, and optional Authenticode signing gate.
+  - Added `LICENSE.txt` and included it in Windows release artifacts, installed files, and wheel metadata.
+  - Added per-user `install_windows.ps1` / `uninstall_windows.ps1` scripts to the release zip.
+  - Installer now registers a per-user Windows uninstall entry under HKCU, and uninstaller removes it for the matching install location.
+  - Uninstaller now refuses to recursively remove an install directory unless GithubSearchDownloader product markers are present, protecting manual `-InstallDir` usage.
+  - Release builder now stamps the staged installer version from `-Version`, so registry `DisplayVersion` and `install_manifest.json` stay aligned with `update_manifest.json`.
+  - Release/verifier/updater scripts now compute SHA256 through .NET instead of relying on PowerShell cmdlet autoload behavior in automation hosts.
+  - Release verifier now tolerates Authenticode lookup being unavailable in automation hosts for normal unsigned verification, while `-RequireSignature` still fails unless the signature is valid.
+  - Update checker now also tolerates Authenticode lookup being unavailable during normal unsigned `-DownloadOnly` verification, while `-RequireSignature` and signed manifests still fail unless the signature is valid.
+  - Added `update_manifest.json` generation for static-hosted update channel publication with package/executable hashes and signature state.
+  - Hosted release builds now stage `update_channel.json`; installer persists it and updater can discover the hosted manifest without a manual `-UpdateManifest`.
+  - Added `check_updates_windows.ps1` for manifest-based version checks, download-only package verification, package size/SHA256 validation, safe zip-entry inspection, optional Authenticode gate, and verified installer handoff.
+  - Added `verify_release_windows.ps1` as a standalone release integrity gate for manifests, checksums, zip entries, Authenticode status, and hard public publish gates.
+  - Verified PyInstaller Windows one-file build and clean-env executable smoke test.
+  - Verified unsigned Windows release package generation; manifest/checksums are created and Authenticode status is recorded as `NotSigned` when no signing certificate is used.
+  - Verified wheel build and package contents for the `src` layout.
+  - Hardened `build_windows.ps1` so running target executables and PyInstaller failures cannot be reported as successful builds.
+  - Updated GitHub REST API version header to `2026-03-10` and aligned rate-limit waits with current GitHub guidance.
+  - Hardened Windows path naming against reserved device names such as `CON`, `COM1`, and `LPT1`.
+  - CLI now reports expected runtime errors without dumping a traceback.
+  - Fixed Python 3.12+ `datetime.utcnow()` deprecation path in repository recency scoring.
+  - Added dry-run protection for metadata/selection mode so `--dry-run` never starts clone.
+  - Expanded regression coverage for release packaging, Ollama runtime options, clone strategy, GraphQL enrichment, and deep relevance scoring.
+  - Verified live GitHub REST dry-run with SQLite export on 2026-06-02.
+
+
+### 2026-07-02 08:08:00 TZ — Изучение и оценка проекта (FULL+IMPROVE)
+- Changed: Сгенерирован полный Project Dossier в docs/audit/reports. Добавлен AGENTS.md для улучшения работы будущих ИИ-агентов.
+- Files: docs/audit/reports/2026-07-02_0800_p-project-unified.md, AGENTS.md
+- Verification: python -m unittest discover -s tests -p "test_*.py" - passed
+- Status: DONE.
+
+### 2026-07-02 08:46:00 TZ — Добавлен автопоиск локальных ИИ
+- Changed: Внедрена функция авто-поиска локальных моделей (Ollama, LM Studio). Если пользователь пытается обновить модели, но выбранный локальный провайдер недоступен, программа проверяет другие порты. Если ни один не отвечает, выводится предупреждение с предложением переключиться на облачный API.
+- Files: src/github_harvester/ai_planner.py, gui_app.py
+- Verification: Успешно протестировано перехватывание отсутствующих серверов ИИ.
+- Status: DONE.
+
+### 2026-07-02 11:12:00 TZ — Добавлен авто-запуск Ollama
+- Changed: Расширена логика автопоиска моделей в `ai_planner.py`. Теперь, если программа обнаруживает, что Ollama установлена на ПК (в стандартных путях `%LOCALAPPDATA%\Programs\Ollama`), но не запущена, она автоматически запускает сервер Ollama (`ollama serve`) в фоновом режиме перед загрузкой списка моделей.
+- Files: src/github_harvester/ai_planner.py
+- Verification: Проверено запуском тестового скрипта — сервер Ollama успешно поднимается в фоне.
+- Status: DONE.
+
+### 2026-07-02 08:12:00 TZ — Code Review (P-CODE-REVIEW)
+- Changed: Проведён детальный аудит качества кода в модулях src/github_harvester/. Написан отчёт об аудите с подтверждением высокого качества (PASS).
+- Files: docs/audit/reports/2026-07-02_0812_p-code-review.md
+- Verification: Ручной анализ + существующие тесты
+- Status: DONE.
+### 2026-07-02 11:49:00 TZ - Релиз 1.1.0: Экспорт в CSV, Batch SQLite, Custom AI Prompt
+- Changed: Добавлена функция экспорта в CSV. Ускорено сохранение в SQLite через batch processing (executemany). Добавлено поле Custom AI Prompt для кастомных правил отбора AI в GUI и CLI.
+- Files: src/github_harvester/exporters.py, src/github_harvester/service.py, src/github_harvester/ai_planner.py, gui_app.py, app.py
+- Verification: python -m unittest discover -s tests -p "test_*.py" - passed
+- Status: DONE.
+
+### 2026-07-13 01:00:00 TZ - Добавлена прокрутка для длинных вкладок
+- Changed: Все вкладки обернуты в кастомный ScrollableFrame на базе Canvas, чтобы содержимое не обрезалось на экранах с низким разрешением или с масштабированием Windows.
+- Files: gui_app.py
+- Verification: Проверено применение Canvas и скролла.
+- Status: DONE.
+
+### 2026-08-30 00:38:25 +03:00 — Упаковка репозитория и внедрение P-GITHUB архитектуры
+- Changed: Полная реструктуризация документации репозитория по стандарту P-GITHUB: внедрена двуязычная документация (README.md и README.ru.md) со 100% AST-паритетом заголовков по методологии Diátaxis, внедрен W3C TDMRep (.well-known/tdmrep.json) для защиты от ИИ-скрапинга, создана политика безопасности SECURITY.md с поддержкой токенов 520+ символов и Windows DPAPI, добавлены шаблоны сообщества (.github/ISSUE_TEMPLATE, PULL_REQUEST_TEMPLATE, SUPPORT, CODEOWNERS, CONTRIBUTING), внедрена спецификация llms.txt (TOON формат), добавлены архитектурные решения MADR 4.0.0 (docs/decisions/) и скрипт валидации AST-паритета (scripts/verify_ast_parity.py).
+- Files: README.md, README.ru.md, SECURITY.md, CONTRIBUTING.md, llms.txt, .well-known/tdmrep.json, .github/ISSUE_TEMPLATE/bug_report.yml, .github/ISSUE_TEMPLATE/feature_request.yml, .github/ISSUE_TEMPLATE/config.yml, .github/PULL_REQUEST_TEMPLATE.md, .github/SUPPORT.md, .github/CODEOWNERS, scripts/verify_ast_parity.py, docs/decisions/ADR-0001-date-sharded-search.md, docs/decisions/ADR-0002-windows-dpapi-secret-storage.md, pyproject.toml
+- Verification: python -m unittest discover -s tests -p "test_*.py" (118 passed), python scripts/verify_ast_parity.py (100% heading depth parity), python app.py --query "test" --output ".\_smoke_output\probe" --dry-run --max-repos 5 (Exit code 0).
+- Status: DONE.
+
+### 2026-08-30 00:58:00 +03:00 — Финализация всех 3 эшелонов P-GITHUB и прохождение стресс-тестирования
+- Changed: Реализована полная модернизация по всем 3 эшелонам:
+  - Эшелон 1 (CLI, CI/CD, Git Hygiene): реконфигурация UTF-8 для sys.stdout/sys.stderr в app.py, опциональный --output при --dry-run (с дефолтом ./output), исключение тестовых артефактов в .gitignore, развертывание матричного CI (.github/workflows/ci.yml) и OpenSSF Scorecard (.github/workflows/scorecard.yml).
+  - Эшелон 2 (GUI, DPI, Theme Contrast, Brand Assets): включена поддержка Windows High-DPI Awareness (SetProcessDpiAwareness), динамическая контрастная раскраска строк Treeview под тему (WCAG AA), генерация мульти-размерных брендовых иконок assets/icon.ico и assets/icon.png, интеграция иконки в окно Tkinter, PyInstaller spec и скрипт установки install_windows.ps1.
+  - Эшелон 3 (Документация и Community): 25 решений MADR 4.0.0, CODE_OF_CONDUCT.md, dependabot.yml, двуязычные README со 100% AST-паритетом.
+  - Верификация: проведена враждебная батарея тестов Sadistic QA Inspector (11 негативных/граничных сценариев CLI, синтаксис py_compile, 123 unit-теста, валидация бинарных ассетов).
+- Files: app.py, gui_app.py, .gitignore, .github/workflows/ci.yml, .github/workflows/scorecard.yml, assets/icon.ico, assets/icon.png, _build/spec/GithubSearchDownloader.spec, packaging/install_windows.ps1, tests/test_gui_profiles.py, tests/test_service.py, CODE_OF_CONDUCT.md, .github/dependabot.yml, docs/DECISIONS.md, docs/decisions/*.md, README.md, README.ru.md, docs/PROJECT_HISTORY.md
+- Verification: python -m unittest discover -s tests -p "test_*.py" (123 passed, 0 failures), python scripts/verify_ast_parity.py (100% AST depth match), python -m py_compile app.py gui_app.py (OK), негативный CLI-фаззинг (11/11 тестов защищены, Exit Codes 1 и 2).
+- Status: DONE.
+
+

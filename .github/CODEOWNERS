@@ -1,0 +1,9 @@
+# Global owners
+* @maintainer
+
+# Core components
+/src/github_harvester/ @maintainer
+/gui_app.py @maintainer
+/app.py @maintainer
+/packaging/ @maintainer
+/docs/ @maintainer

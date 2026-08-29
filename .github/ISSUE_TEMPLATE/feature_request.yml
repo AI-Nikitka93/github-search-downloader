@@ -1,0 +1,47 @@
+name: "Feature Request"
+description: "Suggest an idea or enhancement for GitHub Search Downloader."
+title: "[FEAT]: "
+labels: ["enhancement"]
+type: feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the proposed feature and why it would benefit the project.
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem or Need"
+      description: "Is your feature request related to a specific problem or limitation?"
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Proposed Solution"
+      description: "Detailed description of how you envision this feature working (CLI arguments, GUI controls, export formats)."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives Considered"
+      description: "Any alternative solutions or workarounds you have considered."
+    validations:
+      required: false
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Target Component"
+      description: "Which component does this feature primarily affect?"
+      options:
+        - "Search & Date Sharding (github_api.py)"
+        - "Downloader & Git Engine (downloader.py)"
+        - "AI Planner & Relevance Filter (ai_planner.py)"
+        - "Exporters & Metadata (exporters.py, SQLite, CSV)"
+        - "GUI Interface (gui_app.py)"
+        - "CLI Router (app.py)"
+        - "Windows Packaging & Installer"
+    validations:
+      required: true

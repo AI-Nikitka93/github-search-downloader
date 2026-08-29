@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Security Vulnerability Disclosure"
+    url: "mailto:security@github-search-downloader.local"
+    about: "Report sensitive security issues confidentially."
+  - name: "Questions & General Discussions"
+    url: "https://github.com/example/github-search-downloader/discussions"
+    about: "Ask questions, discuss search strategies, and share workflows."
