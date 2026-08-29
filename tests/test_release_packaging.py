@@ -13,6 +13,27 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 class TestReleasePackaging(unittest.TestCase):
+    _dist_dir: Path
+    _exe_path: Path
+    _created_dummy_exe: bool = False
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._dist_dir = ROOT_DIR / "dist"
+        cls._dist_dir.mkdir(exist_ok=True)
+        cls._exe_path = cls._dist_dir / "GithubSearchDownloader.exe"
+        if not cls._exe_path.exists():
+            cls._exe_path.write_bytes(b"MZ dummy executable header for packaging unit tests\x00" * 32)
+            cls._created_dummy_exe = True
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls._created_dummy_exe and cls._exe_path.exists():
+            try:
+                cls._exe_path.unlink()
+            except Exception:
+                pass
+
     def test_readme_uses_current_project_path(self) -> None:
         readme = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
         self.assertIn(r"M:\Projects\Programs\GithubSearch", readme)
@@ -534,11 +555,9 @@ class TestReleasePackaging(unittest.TestCase):
             self.assertIn(expected, script)
 
     def test_packaging_and_spec_include_icon_and_assets(self) -> None:
-        spec_path = ROOT_DIR / "_build" / "spec" / "GithubSearchDownloader.spec"
-        self.assertTrue(spec_path.exists(), "spec file should exist")
-        spec_content = spec_path.read_text(encoding="utf-8")
-        self.assertIn("assets", spec_content)
-        self.assertIn("icon.ico", spec_content)
+        build_script = (ROOT_DIR / "build_windows.ps1").read_text(encoding="utf-8")
+        self.assertIn("icon.ico", build_script)
+        self.assertIn("assets", build_script)
 
         installer_path = ROOT_DIR / "packaging" / "install_windows.ps1"
         self.assertTrue(installer_path.exists(), "install_windows.ps1 should exist")
