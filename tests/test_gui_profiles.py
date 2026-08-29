@@ -127,20 +127,30 @@ class TestGuiProfiles(unittest.TestCase):
         self.assertEqual(app._last_ai_key_source, "saved")
 
     def test_assets_icon_files_exist_and_are_valid(self) -> None:
-        from PIL import Image
-
         ico_path = ROOT_DIR / "assets" / "icon.ico"
         png_path = ROOT_DIR / "assets" / "icon.png"
         self.assertTrue(ico_path.exists(), "assets/icon.ico should exist")
         self.assertTrue(png_path.exists(), "assets/icon.png should exist")
+        self.assertGreater(ico_path.stat().st_size, 1024, "icon.ico should be non-trivial size")
+        self.assertGreater(png_path.stat().st_size, 1024, "icon.png should be non-trivial size")
 
-        with Image.open(png_path) as png_img:
-            self.assertEqual(png_img.format, "PNG")
-            self.assertEqual(png_img.size, (256, 256))
+        # Validate file signatures
+        png_bytes = png_path.read_bytes()
+        self.assertTrue(png_bytes.startswith(b"\x89PNG\r\n\x1a\n"), "icon.png must have valid PNG magic signature")
 
-        with Image.open(ico_path) as ico_img:
-            self.assertEqual(ico_img.format, "ICO")
-            self.assertGreaterEqual(ico_img.size[0], 16)
+        ico_bytes = ico_path.read_bytes()
+        self.assertTrue(ico_bytes.startswith(b"\x00\x00\x01\x00"), "icon.ico must have valid ICO magic signature")
+
+        try:
+            from PIL import Image
+            with Image.open(png_path) as png_img:
+                self.assertEqual(png_img.format, "PNG")
+                self.assertEqual(png_img.size, (256, 256))
+            with Image.open(ico_path) as ico_img:
+                self.assertEqual(ico_img.format, "ICO")
+                self.assertGreaterEqual(ico_img.size[0], 16)
+        except ImportError:
+            pass
 
     def test_enable_high_dpi_awareness_safe_execution(self) -> None:
         # Calling enable_high_dpi_awareness should be idempotent and never raise
