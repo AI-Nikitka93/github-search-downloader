@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from github_harvester.version import __version__
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -197,7 +198,7 @@ class TestReleasePackaging(unittest.TestCase):
     def test_release_verifier_runs_in_automation_host_without_required_signature(self) -> None:
         script_path = ROOT_DIR / "verify_release_windows.ps1"
         manifest_path = ROOT_DIR / "release" / "release_manifest.json"
-        test_version = "1.0.1"
+        test_version = __version__
         if not manifest_path.exists():
             subprocess.run(
                 [
@@ -209,7 +210,7 @@ class TestReleasePackaging(unittest.TestCase):
                     str(ROOT_DIR / "release_windows.ps1"),
                     "-SkipBuild",
                     "-Version",
-                    "1.0.1",
+                    __version__,
                 ],
                 cwd=ROOT_DIR,
                 text=True,
@@ -220,9 +221,9 @@ class TestReleasePackaging(unittest.TestCase):
         else:
             try:
                 manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-                test_version = manifest_data.get("version", "1.0.1")
+                test_version = manifest_data.get("version", __version__)
             except Exception as e:
-                test_version = "1.0.1"
+                test_version = __version__
 
         result = subprocess.run(
             [
@@ -420,7 +421,7 @@ class TestReleasePackaging(unittest.TestCase):
                     "-UpdateManifest",
                     str(ROOT_DIR / "release" / "update_manifest.json"),
                     "-CurrentVersion",
-                    "0.9.0",
+                    "0.0.0",
                     "-DownloadDir",
                     str(temp_path / "downloads"),
                     "-DownloadOnly",
@@ -448,7 +449,7 @@ class TestReleasePackaging(unittest.TestCase):
                     "-UpdateManifest",
                     str(ROOT_DIR / "release" / "update_manifest.json"),
                     "-CurrentVersion",
-                    "0.9.0",
+                    "0.0.0",
                     "-DownloadDir",
                     str(temp_path / "strict-downloads"),
                     "-DownloadOnly",

@@ -176,12 +176,19 @@ class CardFrame(tk.Frame):
             self._build_header(title, subtitle, accent_color)
 
         # Content container
-        if isinstance(padding, int):
+        if padding is None:
+            padx, pady = 16, 16
+        elif isinstance(padding, int):
             padx, pady = padding, padding
-        elif len(padding) == 2:
-            padx, pady = padding
+        elif isinstance(padding, (tuple, list)):
+            if len(padding) == 0:
+                padx, pady = 16, 16
+            elif len(padding) == 1:
+                padx, pady = padding[0], padding[0]
+            else:
+                padx, pady = padding[0], padding[1]
         else:
-            padx, pady = padding[0], padding[1]
+            padx, pady = 16, 16
 
         self.body = tk.Frame(self, bg=self.card_bg)
         self.body.pack(fill="both", expand=True, padx=padx, pady=pady)
@@ -259,13 +266,13 @@ class HeroSearchBar(tk.Frame):
         self,
         parent: tk.Misc,
         placeholder: str = "Поиск репозиториев, технологий, AI агентов...",
-        preset_tags: Sequence[str] = ("OSINT", "LLM Agent", "FastAPI", "React", "Rust", "Security"),
+        preset_tags: Sequence[str] | None = ("OSINT", "LLM Agent", "FastAPI", "React", "Rust", "Security"),
         on_search: Callable[[str], None] | None = None,
         on_tag_selected: Callable[[str], None] | None = None,
         **kwargs,
     ):
         self.placeholder = placeholder
-        self.preset_tags = list(preset_tags)
+        self.preset_tags = list(preset_tags) if preset_tags is not None else []
         self.on_search = on_search
         self.on_tag_selected = on_tag_selected
 

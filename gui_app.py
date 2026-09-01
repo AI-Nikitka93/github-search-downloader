@@ -149,6 +149,14 @@ from github_harvester.updater import (
     UpdateChecker,
     UpdateDownloader,
 )
+from github_harvester.ui_components import (
+    UIColors,
+    CardFrame,
+    PillBadge,
+    AccentButton,
+    ModernTreeview,
+    register_custom_ttk_styles,
+)
 
 
 SETTINGS_FILE = ROOT_DIR / "gui_settings.json"
@@ -1452,8 +1460,8 @@ class GitHubSearchGUI:
 
         self._build_menu()
         self._refresh_header_status()
-        self.root.after(400, self._check_and_show_onboarding)
-        self.root.after(1200, self._start_background_update_check)
+        self._onboard_after_id = self.root.after(400, self._check_and_show_onboarding)
+        self._update_after_id = self.root.after(1200, self._start_background_update_check)
 
     def _build_menu(self) -> None:
         menubar = Menu(self.root)
@@ -1730,55 +1738,134 @@ class GitHubSearchGUI:
         self._build_log(bottom_container)
         self._apply_theme_colors()
 
+    def _append_tag_to_search(self, tag: str) -> None:
+        if not tag or not str(tag).strip():
+            return
+        tag = str(tag).strip()
+        if tag.startswith("stars:"):
+            cur_q = self.query_var.get().strip()
+            if "stars:" not in cur_q:
+                self.query_var.set(f"{cur_q} {tag}".strip())
+        else:
+            cur_ai = self.ai_task_text.get("1.0", "end-1c").strip()
+            if tag.lower() not in cur_ai.lower():
+                new_ai = f"{cur_ai}, {tag}".strip(", ")
+                self.ai_task_text.delete("1.0", END)
+                self.ai_task_text.insert("1.0", new_ai)
+            cur_q = self.query_var.get().strip()
+            words = tag.split()
+            if words:
+                clean_word = re.sub(r"[^\w\-+]", "", words[0]).strip().lower()
+                if clean_word and clean_word not in cur_q.lower():
+                    self.query_var.set(f"{cur_q} {clean_word}".strip())
+
     def _build_tab_main(self, parent: ttk.Frame) -> None:
         parent.grid_columnconfigure(0, weight=1)
 
-        # Блок "Поиск"
-        search_frame = ttk.LabelFrame(parent, text="Поиск")
-        search_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8), padx=4)
-        search_frame.grid_columnconfigure(1, weight=1)
+        # 1. Hero Search Card
+        search_card = CardFrame(
+            parent,
+            title="🌟 Что нужно найти?",
+            subtitle="Опишите задачу для ИИ-фильтрации или введите ключевые слова",
+            accent_color="#388bfd",
+            padding=(16, 14),
+        )
+        search_card.grid(row=0, column=0, sticky="ew", pady=(0, 12), padx=2)
+        search_card.body.grid_columnconfigure(0, weight=1)
 
-        ttk.Label(search_frame, text="Что нужно найти? (описание для ИИ)", font=("Segoe UI Variable Display", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
-        self.ai_task_text = Text(search_frame, height=3, wrap="word", font=("Segoe UI Variable Text", 10))
-        self.ai_task_text.grid(row=1, column=0, columnspan=2, sticky="we", padx=8, pady=(0, 8))
+        # AI Prompt Multi-line Text Field
+        self.ai_task_text = Text(
+            search_card.body,
+            height=3,
+            wrap="word",
+            font=("Segoe UI Variable Text", 10),
+            bg="#0d1117" if UIColors.is_dark() else "#ffffff",
+            fg="#e6edf3" if UIColors.is_dark() else "#1f2328",
+            insertbackground="#e6edf3" if UIColors.is_dark() else "#1f2328",
+            relief="solid",
+            bd=1,
+            highlightthickness=0,
+        )
+        self.ai_task_text.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.ai_task_text.insert("1.0", "Найди свежие репозитории по OSINT и AI-анализу, без старых и заброшенных проектов.")
-        
-        btn_frame = ttk.Frame(search_frame)
-        btn_frame.grid(row=2, column=0, columnspan=2, sticky="e", padx=8, pady=(0, 8))
-        ttk.Checkbutton(btn_frame, text="Использовать AI-Автопилот (AI-планировщик)", variable=self.autopilot_enabled_var).pack(side="left", padx=(0, 16))
-        self.ai_apply_button = ttk.Button(btn_frame, text="Сгенерировать настройки поиска", command=self.apply_ai_command)
+
+        # Preset Tag Chips Deck
+        chips_deck = ttk.Frame(search_card.body)
+        chips_deck.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(chips_deck, text="Быстрые теги:", font=("Segoe UI Variable Text", 9), foreground="#8b949e").pack(side="left", padx=(0, 6))
+
+        preset_tags = [
+            ("🤖 AI/LLM", "AI LLM agent"),
+            ("🐍 Python", "Python"),
+            ("🛡 OSINT", "OSINT security"),
+            ("⭐ >500", "stars:>500"),
+            ("🔥 Trending", "trending"),
+            ("⚡ FastAPI", "FastAPI"),
+            ("🦀 Rust", "Rust"),
+        ]
+        for label, tag_val in preset_tags:
+            btn = ttk.Button(
+                chips_deck,
+                text=label,
+                command=lambda t=tag_val: self._append_tag_to_search(t),
+            )
+            btn.pack(side="left", padx=3)
+
+        # AI Planning Controls Row
+        ai_ctrl_row = ttk.Frame(search_card.body)
+        ai_ctrl_row.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        ttk.Checkbutton(ai_ctrl_row, text="⚡ Использовать AI-Автопилот (AI-планировщик)", variable=self.autopilot_enabled_var).pack(side="left")
+        self.ai_apply_button = ttk.Button(ai_ctrl_row, text="✨ Сгенерировать параметры поиска", command=self.apply_ai_command)
         self.ai_apply_button.pack(side="right")
 
-        self._add_labeled_entry(search_frame, "Поисковый запрос (для GitHub)", self.query_var, row=3)
+        # GitHub Direct Search Query Entry
+        gh_query_row = ttk.Frame(search_card.body)
+        gh_query_row.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        gh_query_row.grid_columnconfigure(1, weight=1)
+        ttk.Label(gh_query_row, text="Поисковый запрос (GitHub):", font=("Segoe UI Variable Text", 9, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 8))
+        entry_query = ttk.Entry(gh_query_row, textvariable=self.query_var)
+        entry_query.grid(row=0, column=1, sticky="ew")
 
-        # Блок "Сохранение и Экспорт"
-        export_frame = ttk.LabelFrame(parent, text="Сохранение и экспорт")
-        export_frame.grid(row=1, column=0, sticky="ew", pady=(0, 8), padx=4)
-        export_frame.grid_columnconfigure(1, weight=1)
+        # 2. Destination & Export Card
+        dest_card = CardFrame(
+            parent,
+            title="📂 Сохранение и экспорт",
+            subtitle="Куда сохранять найденные проекты и форматы экспорта",
+            accent_color="#238636",
+            padding=(16, 12),
+        )
+        dest_card.grid(row=1, column=0, sticky="ew", pady=(0, 12), padx=2)
+        dest_card.body.grid_columnconfigure(1, weight=1)
 
-        self._add_output_row(export_frame, row=0)
-        
-        export_flags = ttk.Frame(export_frame)
-        export_flags.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(4, 12))
+        self._add_output_row(dest_card.body, row=0)
+
+        export_flags = ttk.Frame(dest_card.body)
+        export_flags.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Checkbutton(export_flags, text="Экспорт в CSV", variable=self.export_csv_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(export_flags, text="Упаковать код в один файл (для ИИ)", variable=self.export_ai_ready_var).pack(side="left", padx=(0, 16))
+        ttk.Checkbutton(export_flags, text="Упаковать код в один файл (для ИИ / Repomix)", variable=self.export_ai_ready_var).pack(side="left")
 
-        # Блок "Лимиты и качество"
-        limits_frame = ttk.LabelFrame(parent, text="Лимиты и качество")
-        limits_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8), padx=4)
-        limits_frame.grid_columnconfigure(1, weight=1)
+        # 3. Quality & Limits Card (Clean & Compact)
+        limits_card = CardFrame(
+            parent,
+            title="⚙️ Профиль поиска и лимиты",
+            subtitle="Тонкая настройка строгости отбора и глубины поиска",
+            accent_color="#8957e5",
+            padding=(16, 12),
+        )
+        limits_card.grid(row=2, column=0, sticky="ew", pady=(0, 8), padx=2)
+        limits_card.body.grid_columnconfigure(1, weight=1)
 
-        ttk.Label(limits_frame, text="Профиль качества").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 8))
-        profile_frame = ttk.Frame(limits_frame)
-        profile_frame.grid(row=0, column=1, sticky="w", pady=(8, 8))
-        profile_combo = ttk.Combobox(profile_frame, textvariable=self.search_profile_var, values=tuple(SEARCH_PROFILES.keys()), state="readonly", width=20)
+        ttk.Label(limits_card.body, text="Профиль качества:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+        profile_frame = ttk.Frame(limits_card.body)
+        profile_frame.grid(row=0, column=1, sticky="w", pady=4)
+        profile_combo = ttk.Combobox(profile_frame, textvariable=self.search_profile_var, values=tuple(SEARCH_PROFILES.keys()), state="readonly", width=18)
         profile_combo.pack(side="left")
         self.profile_apply_button = ttk.Button(profile_frame, text="Применить", command=self.apply_selected_profile)
         self.profile_apply_button.pack(side="left", padx=(8, 0))
 
-        self._add_labeled_entry(limits_frame, "Сколько проектов искать (максимум)", self.max_repos_var, row=1)
-        self._add_labeled_entry(limits_frame, "Игнорировать проекты старше (лет)", self.max_age_years_var, row=2)
-        self._add_labeled_entry(limits_frame, "Минимум звезд", self.min_stars_var, row=3)
+        self._add_labeled_entry(limits_card.body, "Сколько проектов искать (максимум)", self.max_repos_var, row=1)
+        self._add_labeled_entry(limits_card.body, "Игнорировать проекты старше (лет)", self.max_age_years_var, row=2)
+        self._add_labeled_entry(limits_card.body, "Минимум звезд (stars)", self.min_stars_var, row=3)
 
     def _build_tab_ai(self, parent: ttk.Frame) -> None:
         parent.grid_columnconfigure(0, weight=1, uniform="pane")
@@ -1840,7 +1927,7 @@ class GitHubSearchGUI:
         ttk.Button(key_frame, text="Сохранить", command=self._save_ai_api_key_to_store).pack(side="left", padx=(8, 0))
         ttk.Button(key_frame, text="Загрузить", command=self._load_ai_api_key_from_store).pack(side="left", padx=(6, 0))
         
-        self.lbl_get_key = ttk.Label(key_frame, text="Где взять ключ?", foreground="#0078D7", cursor="hand2")
+        self.lbl_get_key = ttk.Label(key_frame, text="Где взять ключ?", foreground="#58a6ff", cursor="hand2", font=("Segoe UI Variable Text", 9, "underline"))
         self.lbl_get_key.pack(side="left", padx=(12, 0))
         self.lbl_get_key.bind("<Button-1>", self._open_provider_key_url)
 
@@ -1868,7 +1955,7 @@ class GitHubSearchGUI:
                     self._debug(f"State update failed: {e}")
             
         self.ai_filter_enabled_var.trace_add("write", update_ai_filter_state)
-        self.root.after(100, update_ai_filter_state)
+        update_ai_filter_state()
 
         # Тонкая настройка
         adv_frame = ttk.LabelFrame(right_pane, text="Тонкая настройка (Advanced)")
@@ -1956,23 +2043,23 @@ class GitHubSearchGUI:
         r2.pack(side="left", padx=(0, 16))
 
         actions = ttk.Frame(parent)
-        actions.pack(fill="x", pady=(16, 16))
+        actions.pack(fill="x", pady=(12, 12))
         
         self.start_button = ttk.Button(actions, text="🚀 Найти и Скачать код", command=self.start_collection, style="Accent.TButton")
         self.start_button.pack(side="left", padx=(0, 8))
         
-        self.stop_button = ttk.Button(actions, text="Стоп", command=self.stop_collection, state="disabled")
+        self.stop_button = ttk.Button(actions, text="⏹ Стоп", command=self.stop_collection, state="disabled")
         self.stop_button.pack(side="left", padx=(0, 8))
 
-        # Вспомогательные кликабельные метки вместо кнопок
+        # Вспомогательные кликабельные метки с WCAG AAA контрастом
         links_frame = ttk.Frame(actions)
         links_frame.pack(side="right", padx=(0, 8))
         
-        lbl_folder = ttk.Label(links_frame, text="📁 Открыть папку", foreground="#0078D7", cursor="hand2")
+        lbl_folder = ttk.Label(links_frame, text="📁 Открыть папку", foreground="#58a6ff", cursor="hand2", font=("Segoe UI Variable Text", 9, "bold"))
         lbl_folder.pack(side="left", padx=(0, 16))
         lbl_folder.bind("<Button-1>", lambda e: self.open_output_folder())
         
-        lbl_log = ttk.Label(links_frame, text="📄 Открыть лог", foreground="#0078D7", cursor="hand2")
+        lbl_log = ttk.Label(links_frame, text="📄 Открыть лог", foreground="#58a6ff", cursor="hand2", font=("Segoe UI Variable Text", 9, "bold"))
         lbl_log.pack(side="left")
         lbl_log.bind("<Button-1>", lambda e: self.open_debug_log())
 
@@ -2007,6 +2094,12 @@ class GitHubSearchGUI:
 
     def _stop_status_animation(self) -> None:
         self._animation_active = False
+        if getattr(self, "_animation_after_id", None):
+            try:
+                self.root.after_cancel(self._animation_after_id)
+            except Exception:
+                pass
+            self._animation_after_id = None
 
     def _set_status(self, new_status: str) -> None:
         if self._animation_active:
@@ -2020,16 +2113,43 @@ class GitHubSearchGUI:
         dots = "." * (self._animation_step % 4)
         self.status_var.set(f"{self._base_status_text}{dots}")
         self._animation_step += 1
-        self.root.after(400, self._animate_status)
+        self._animation_after_id = self.root.after(400, self._animate_status)
 
     def _build_log(self, parent: ttk.Frame) -> None:
         log_frame = ttk.Frame(parent)
         log_frame.pack(fill=BOTH, expand=True)
-        self.log_text = Text(log_frame, wrap="word", height=10, relief="flat", borderwidth=0, font=("Consolas", 10))
+        
+        is_dark = UIColors.is_dark()
+        bg_col = "#0d1117" if is_dark else "#f6f8fa"
+        fg_col = "#e6edf3" if is_dark else "#1f2328"
+        
+        self.log_text = Text(
+            log_frame,
+            wrap="word",
+            height=9,
+            relief="solid",
+            bd=1,
+            highlightthickness=0,
+            bg=bg_col,
+            fg=fg_col,
+            insertbackground=fg_col,
+            font=("Consolas", 10),
+            padx=10,
+            pady=8,
+        )
         self.log_text.pack(side=LEFT, fill=BOTH, expand=True)
         scrollbar = ttk.Scrollbar(log_frame, orient=VERTICAL, command=self.log_text.yview)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.log_text.configure(yscrollcommand=scrollbar.set)
+        
+        # Tags for colored, eye-friendly logging
+        self.log_text.tag_configure("ts", foreground="#8b949e")
+        self.log_text.tag_configure("success", foreground="#3fb950" if is_dark else "#1a7f37")
+        self.log_text.tag_configure("info", foreground="#58a6ff" if is_dark else "#0969da")
+        self.log_text.tag_configure("warn", foreground="#d29922" if is_dark else "#9a6700")
+        self.log_text.tag_configure("err", foreground="#f85149" if is_dark else "#cf222e")
+        self.log_text.tag_configure("dim", foreground="#6e7681")
+        
         self.log_text.configure(state="disabled")
 
     def apply_selected_profile(self, notify: bool = True) -> None:
@@ -2401,18 +2521,36 @@ class GitHubSearchGUI:
     def _append_log(self, message: str) -> None:
         if not self.log_text:
             return
+            
+        # Clean verbose technical config dump from cluttering user UI
+        if "retry_failed_clones=" in message and "clone_timeout=" in message:
+            message = "🚀 Запуск процесса сбора репозиториев..."
+            
         self.log_text.configure(state="normal")
-        self.log_text.insert(END, f"{message}\n")
+        
+        tag = None
+        if any(w in message for w in ("✓", "успешно", "Найдено", "Готово", "завершено")):
+            tag = "success"
+        elif any(w in message for w in ("🚀", "✨", "🔍", "Старт", "Запуск")):
+            tag = "info"
+        elif any(w in message for w in ("Внимание", "Ожидание", "Лимит", "Повтор")):
+            tag = "warn"
+        elif any(w in message for w in ("Ошибка", "Сбой", "FAIL", "Exception", "Error")):
+            tag = "err"
+            
+        if tag:
+            self.log_text.insert(END, f"{message}\n", tag)
+        else:
+            self.log_text.insert(END, f"{message}\n")
+            
         self.log_text.see(END)
         self.log_text.configure(state="disabled")
 
     def _append_log_batch(self, messages: list[str]) -> None:
         if not self.log_text or not messages:
             return
-        self.log_text.configure(state="normal")
-        self.log_text.insert(END, "\n".join(messages) + "\n")
-        self.log_text.see(END)
-        self.log_text.configure(state="disabled")
+        for msg in messages:
+            self._append_log(msg)
 
     def _update_runtime_status_from_log(self, message: str) -> None:
         if not self.is_running:
