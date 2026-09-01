@@ -61,11 +61,14 @@ def enable_high_dpi_awareness() -> None:
 
 
 def apply_windows11_modern_chrome(window_handle: int, dark: bool = True) -> None:
-    """Enables Windows 11 DWM Immersive Dark Mode and Rounded Corners."""
+    """Enables Windows 10/11 DWM Immersive Dark Mode, Caption Color, and Rounded Corners."""
     try:
+        DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19
         DWMWA_USE_IMMERSIVE_DARK_MODE = 20
         DWMWA_WINDOW_CORNER_PREFERENCE = 33
-        DWMWCP_ROUND = 2  # DWM_WINDOW_CORNER_PREFERENCE::DWMWCP_ROUND
+        DWMWA_CAPTION_COLOR = 35
+        DWMWA_TEXT_COLOR = 36
+        DWMWCP_ROUND = 2
 
         value = ctypes.c_int(1 if dark else 0)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
@@ -73,6 +76,29 @@ def apply_windows11_modern_chrome(window_handle: int, dark: bool = True) -> None
             DWMWA_USE_IMMERSIVE_DARK_MODE,
             ctypes.byref(value),
             ctypes.sizeof(value),
+        )
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1,
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+
+        # Set titlebar background to slate #0D1117 (BGR: 0x17110D) or light #FFFFFF
+        caption_color = ctypes.c_int(0x17110D if dark else 0xFFFFFF)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            DWMWA_CAPTION_COLOR,
+            ctypes.byref(caption_color),
+            ctypes.sizeof(caption_color),
+        )
+
+        text_color = ctypes.c_int(0xF3EDE6 if dark else 0x28231F)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            DWMWA_TEXT_COLOR,
+            ctypes.byref(text_color),
+            ctypes.sizeof(text_color),
         )
 
         corner_value = ctypes.c_int(DWMWCP_ROUND)
@@ -846,10 +872,15 @@ class FirstRunWizard(Toplevel):
         )
 
     def _render_step2(self, parent):
-        box = ttk.LabelFrame(parent, text=" 💾 Рабочая папка ", padding=15)
+        box = ttk.LabelFrame(parent, text=" 💾 Рабочая папка и хранилище ", padding=12)
         box.pack(fill=BOTH, expand=True)
 
-        ttk.Label(box, text="Куда сохранять скачиваемые репозитории:").pack(anchor="w")
+        vault_photo = self._get_hero_photo("hero_storage_vault.png", 520, 150)
+        if vault_photo:
+            lbl_banner = ttk.Label(box, image=vault_photo)
+            lbl_banner.pack(anchor="center", pady=(0, 6))
+
+        ttk.Label(box, text="Куда сохранять скачиваемые репозитории:", font=("Segoe UI Variable Text", 9)).pack(anchor="w")
 
         path_row = ttk.Frame(box)
         path_row.pack(fill="x", pady=8)
@@ -864,13 +895,13 @@ class FirstRunWizard(Toplevel):
                 self._update_disk_info()
 
         ttk.Button(path_row, text="Обзор...", command=browse).pack(side=RIGHT)
-        ttk.Label(box, textvariable=self.disk_info_var, font=("Segoe UI", 10)).pack(anchor="w", pady=10)
+        ttk.Label(box, textvariable=self.disk_info_var, font=("Segoe UI Variable Text", 9)).pack(anchor="w", pady=4)
 
     def _render_step3(self, parent):
         box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ-помощника ", padding=12)
         box.pack(fill=BOTH, expand=True)
 
-        hero_photo = self._get_hero_photo("wizard_step3_ai_hero.png", 520, 150)
+        hero_photo = self._get_hero_photo("hero_ai_providers.png", 520, 140)
         if hero_photo:
             lbl_banner = ttk.Label(box, image=hero_photo)
             lbl_banner.pack(anchor="center", pady=(0, 6))
@@ -997,11 +1028,16 @@ class FirstRunWizard(Toplevel):
         r3.pack(anchor="w", pady=(8, 0))
 
     def _render_step4(self, parent):
-        box = ttk.LabelFrame(parent, text=" ✨ Готовые быстрые шаблоны ", padding=15)
+        box = ttk.LabelFrame(parent, text=" ✨ Готовые быстрые шаблоны ", padding=12)
         box.pack(fill=BOTH, expand=True)
 
-        ttk.Label(box, text="Выберите шаблон для первого поиска или начните с чистого листа:", font=("Segoe UI", 10)).pack(
-            anchor="w", pady=(0, 10)
+        ready_photo = self._get_hero_photo("empty_state_search.png", 520, 140)
+        if ready_photo:
+            lbl_banner = ttk.Label(box, image=ready_photo)
+            lbl_banner.pack(anchor="center", pady=(0, 6))
+
+        ttk.Label(box, text="Выберите шаблон для первого поиска или начните с чистого листа:", font=("Segoe UI Variable Text", 9)).pack(
+            anchor="w", pady=(0, 8)
         )
 
         presets = [
@@ -1438,7 +1474,26 @@ class GitHubSearchGUI:
         self.preview_selection_var = StringVar(value="Выбрано: 0")
         self.preview_metadata_file: Path | None = None
         self.preview_query: str = ""
+        self._cached_assets: dict[tuple, object] = {}
+        self._init_gui_state()
 
+    def _get_asset_image(self, filename: str, size: tuple[int, int]) -> object | None:
+        key = (filename, size)
+        if key in self._cached_assets:
+            return self._cached_assets[key]
+        p = ROOT_DIR / "assets" / filename
+        if not p.exists():
+            return None
+        try:
+            from PIL import Image, ImageTk
+            im = Image.open(p).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(im, master=self.root)
+            self._cached_assets[key] = photo
+            return photo
+        except Exception:
+            return None
+
+    def _init_gui_state(self) -> None:
         self._build_ui()
         self.apply_selected_profile(notify=False)
         self._debug("GUI инициализирована")
@@ -1464,21 +1519,7 @@ class GitHubSearchGUI:
         self._update_after_id = self.root.after(1200, self._start_background_update_check)
 
     def _build_menu(self) -> None:
-        menubar = Menu(self.root)
-
-        help_menu = Menu(menubar, tearoff=0)
-        help_menu.add_command(label="Мастер первого запуска...", command=self._open_onboarding_wizard)
-        help_menu.add_command(label="Проверить обновления...", command=self._open_update_dialog)
-        help_menu.add_separator()
-        help_menu.add_command(label="Открыть репозиторий GitHub", command=lambda: webbrowser.open(GITHUB_REPO_URL))
-        help_menu.add_command(label="Документация", command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"))
-        help_menu.add_separator()
-        help_menu.add_command(label="О программе", command=self._open_about_dialog)
-        help_menu.add_separator()
-        help_menu.add_command(label="🗑️ Удалить программу с ПК...", command=self._uninstall_app)
-
-        menubar.add_cascade(label="Справка", menu=help_menu)
-        self.root.config(menu=menubar)
+        pass
 
     def _open_about_dialog(self) -> None:
         AboutDialog(self.root)
@@ -1681,9 +1722,40 @@ class GitHubSearchGUI:
         header_top = ttk.Frame(header_frame)
         header_top.pack(fill="x")
         
-        title = ttk.Label(header_top, text=f"{APP_DISPLAY_NAME} v{__version__}", font=("Segoe UI Variable Display", 18, "bold"))
+        # 3D Branding Logo and Title
+        title_box = ttk.Frame(header_top)
+        title_box.pack(side=LEFT)
+
+        logo_path = ROOT_DIR / "assets" / "icon.png"
+        self._header_logo_img = None
+        if logo_path.exists():
+            try:
+                from PIL import Image, ImageTk
+                pil_img = Image.open(logo_path).convert("RGBA").resize((30, 30), Image.Resampling.LANCZOS)
+                self._header_logo_img = ImageTk.PhotoImage(pil_img, master=self.root)
+                logo_lbl = ttk.Label(title_box, image=self._header_logo_img)
+                logo_lbl.pack(side=LEFT, padx=(0, 10))
+            except Exception:
+                pass
+
+        title = ttk.Label(title_box, text=f"{APP_DISPLAY_NAME} v{__version__}", font=("Segoe UI Variable Display", 18, "bold"))
         title.pack(side=LEFT)
         
+        # Header Controls & Modern Menu Dropdown
+        self.menu_btn = ttk.Menubutton(header_top, text="☰ Меню")
+        self.menu_btn.pack(side=RIGHT, padx=(4, 0))
+        self.dropdown_menu = Menu(self.menu_btn, tearoff=0)
+        self.dropdown_menu.add_command(label="🧙 Мастер первого запуска...", command=self._open_onboarding_wizard)
+        self.dropdown_menu.add_command(label="🔄 Проверить обновления...", command=self._open_update_dialog)
+        self.dropdown_menu.add_separator()
+        self.dropdown_menu.add_command(label="🌐 Репозиторий на GitHub", command=lambda: webbrowser.open(GITHUB_REPO_URL))
+        self.dropdown_menu.add_command(label="📖 Документация", command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"))
+        self.dropdown_menu.add_separator()
+        self.dropdown_menu.add_command(label="ℹ О программе", command=self._open_about_dialog)
+        self.dropdown_menu.add_separator()
+        self.dropdown_menu.add_command(label="🗑️ Удалить программу с ПК...", command=self._uninstall_app)
+        self.menu_btn.configure(menu=self.dropdown_menu)
+
         theme_btn = ttk.Button(header_top, text="🌓 Тема", command=self._toggle_theme)
         theme_btn.pack(side=RIGHT, padx=(4, 0))
 
@@ -1789,26 +1861,29 @@ class GitHubSearchGUI:
         self.ai_task_text.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.ai_task_text.insert("1.0", "Найди свежие репозитории по OSINT и AI-анализу, без старых и заброшенных проектов.")
 
-        # Preset Tag Chips Deck
+        # Preset Tag Chips Deck with 3D Micro-Icons
         chips_deck = ttk.Frame(search_card.body)
         chips_deck.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(chips_deck, text="Быстрые теги:", font=("Segoe UI Variable Text", 9), foreground="#8b949e").pack(side="left", padx=(0, 6))
+        ttk.Label(chips_deck, text="Быстрые теги:", font=("Segoe UI Variable Text", 9, "bold"), foreground="#8b949e").pack(side="left", padx=(0, 6))
 
         preset_tags = [
-            ("🤖 AI/LLM", "AI LLM agent"),
-            ("🐍 Python", "Python"),
-            ("🛡 OSINT", "OSINT security"),
-            ("⭐ >500", "stars:>500"),
-            ("🔥 Trending", "trending"),
-            ("⚡ FastAPI", "FastAPI"),
-            ("🦀 Rust", "Rust"),
+            ("AI/LLM", "AI LLM agent", "chip_ai_24.png", "🤖"),
+            ("Python", "Python", "chip_python_24.png", "🐍"),
+            ("OSINT", "OSINT security", "chip_osint_24.png", "🛡"),
+            (">500", "stars:>500", "chip_stars_24.png", "⭐"),
+            ("FastAPI", "FastAPI", "chip_fastapi_24.png", "⚡"),
+            ("Rust", "Rust", "chip_rust_24.png", "🦀"),
         ]
-        for label, tag_val in preset_tags:
-            btn = ttk.Button(
-                chips_deck,
-                text=label,
-                command=lambda t=tag_val: self._append_tag_to_search(t),
-            )
+        for label, tag_val, icon_file, fallback_emoji in preset_tags:
+            icon_img = self._get_asset_image(icon_file, (18, 18))
+            btn_kwargs = {
+                "text": f" {label}" if icon_img else f"{fallback_emoji} {label}",
+                "command": lambda t=tag_val: self._append_tag_to_search(t),
+            }
+            if icon_img:
+                btn_kwargs["image"] = icon_img
+                btn_kwargs["compound"] = "left"
+            btn = ttk.Button(chips_deck, **btn_kwargs)
             btn.pack(side="left", padx=3)
 
         # AI Planning Controls Row
@@ -1934,9 +2009,23 @@ class GitHubSearchGUI:
         ttk.Label(left_pane, textvariable=self.saved_ai_key_status_var).grid(row=5, column=1, columnspan=3, sticky="w", pady=(0, 12))
         self._add_labeled_entry(left_pane, "Переменная окружения для ключа", self.ai_api_key_env_var, row=6)
 
+        # AI Hero Badge Card
+        ai_hero_img = self._get_asset_image("hero_ai_providers.png", (180, 180))
+        if ai_hero_img:
+            hero_card = CardFrame(
+                right_pane,
+                title="🧠 Нейросетевой фильтр",
+                subtitle="Ollama • Mistral • OpenRouter • NVIDIA",
+                accent_color="#8957e5",
+                padding=10,
+            )
+            hero_card.grid(row=0, column=0, sticky="ew", pady=(0, 10), padx=4)
+            lbl_ai = ttk.Label(hero_card.body, image=ai_hero_img)
+            lbl_ai.pack(pady=(2, 6))
+
         # AI-фильтр релевантности
         filter_frame = ttk.LabelFrame(right_pane, text="AI-фильтр релевантности")
-        filter_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8), padx=4)
+        filter_frame.grid(row=1 if ai_hero_img else 0, column=0, sticky="ew", pady=(0, 8), padx=4)
         filter_frame.grid_columnconfigure(1, weight=1)
         
         ttk.Checkbutton(filter_frame, text="Оценивать каждый найденный проект через ИИ", variable=self.ai_filter_enabled_var).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 12))
@@ -1948,7 +2037,6 @@ class GitHubSearchGUI:
             state = "normal" if self.ai_filter_enabled_var.get() else "disabled"
             if hasattr(self, "ai_filter_min_score_entry"):
                 try:
-                    # In _add_labeled_entry, we return the entry widget.
                     self.ai_filter_min_score_entry.configure(state=state)
                     self.ai_filter_max_reviews_entry.configure(state=state)
                 except Exception as e:
@@ -1959,7 +2047,7 @@ class GitHubSearchGUI:
 
         # Тонкая настройка
         adv_frame = ttk.LabelFrame(right_pane, text="Тонкая настройка (Advanced)")
-        adv_frame.grid(row=1, column=0, sticky="ew", pady=(12, 8), padx=4)
+        adv_frame.grid(row=2 if ai_hero_img else 1, column=0, sticky="ew", pady=(12, 8), padx=4)
         adv_frame.grid_columnconfigure(1, weight=1)
         
         self._add_labeled_entry(adv_frame, "Размер контекста (num_ctx)", self.ai_num_ctx_var, row=0)
@@ -1968,62 +2056,148 @@ class GitHubSearchGUI:
         self._add_labeled_entry(adv_frame, "Таймаут ожидания ИИ (сек)", self.ai_timeout_var, row=3)
 
     def _build_tab_filters(self, parent: ttk.Frame) -> None:
-        parent.grid_columnconfigure(1, weight=1)
-        self._add_labeled_entry(parent, "Дата начала (YYYY-MM-DD)", self.created_after_var, row=0)
-        self._add_labeled_entry(parent, "Дата конца (YYYY-MM-DD)", self.created_before_var, row=1)
-        self._add_labeled_entry(parent, "Язык (необязательно)", self.language_var, row=2)
-        self._add_labeled_entry(parent, "Обязательные слова (через запятую)", self.include_keywords_var, row=3)
-        self._add_labeled_entry(parent, "Исключить слова (через запятую)", self.exclude_keywords_var, row=4)
+        parent.grid_columnconfigure(0, weight=3)
+        parent.grid_columnconfigure(1, weight=2)
+
+        left_pane = ttk.Frame(parent)
+        left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_pane.grid_columnconfigure(1, weight=1)
+
+        self._add_labeled_entry(left_pane, "Дата начала (YYYY-MM-DD)", self.created_after_var, row=0)
+        self._add_labeled_entry(left_pane, "Дата конца (YYYY-MM-DD)", self.created_before_var, row=1)
+        self._add_labeled_entry(left_pane, "Язык (необязательно)", self.language_var, row=2)
+        self._add_labeled_entry(left_pane, "Обязательные слова (через запятую)", self.include_keywords_var, row=3)
+        self._add_labeled_entry(left_pane, "Исключить слова (через запятую)", self.exclude_keywords_var, row=4)
         
-        toggles = ttk.Frame(parent)
+        toggles = ttk.Frame(left_pane)
         toggles.grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 4))
         ttk.Checkbutton(toggles, text="Искать среди форков (копий)", variable=self.include_forks_var).pack(side="left", padx=(0, 16))
         ttk.Checkbutton(toggles, text="Искать заброшенные (Archived)", variable=self.include_archived_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(toggles, text="Не скачивать уже загруженные", variable=self.skip_existing_var).pack(side="left", padx=(0, 16))
+        ttk.Checkbutton(toggles, text="Не скачивать уже загруженные", variable=self.skip_existing_var).pack(side="left")
+
+        # Right Hero Card
+        radar_img = self._get_asset_image("hero_search_radar.png", (170, 170))
+        if radar_img:
+            right_card = CardFrame(
+                parent,
+                title="📡 Радар поиска GitHub",
+                subtitle="Шардирование по датам и фильтрация",
+                accent_color="#388bfd",
+                padding=12,
+            )
+            right_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+            
+            lbl_img = ttk.Label(right_card.body, image=radar_img)
+            lbl_img.pack(pady=(2, 6))
+            
+            tips_lbl = ttk.Label(
+                right_card.body,
+                text="💡 Подсказки квалификаторов:\n• stars:>500 — популярные проекты\n• license:mit — открытая лицензия MIT\n• topic:llm — репозитории с тегом LLM\n• pushed:>2026-08-01 — активные коммиты",
+                font=("Segoe UI Variable Text", 9),
+                foreground="#8b949e",
+                justify="left",
+            )
+            tips_lbl.pack(fill="x", padx=4)
 
     def _build_tab_tokens(self, parent: ttk.Frame) -> None:
-        self._add_token_row(parent, row=0)
-        for col in range(2):
-            parent.grid_columnconfigure(col, weight=1 if col == 1 else 0)
+        parent.grid_columnconfigure(0, weight=3)
+        parent.grid_columnconfigure(1, weight=2)
+
+        left_pane = ttk.Frame(parent)
+        left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_pane.grid_columnconfigure(1, weight=1)
+
+        self._add_token_row(left_pane, row=0)
+
+        # Right Hero Card
+        octo_img = self._get_asset_image("icon_1024.png", (160, 160))
+        if octo_img:
+            right_card = CardFrame(
+                parent,
+                title="🔐 Безопасность и Лимиты",
+                subtitle="Защищенное хранилище Windows DPAPI",
+                accent_color="#388bfd",
+                padding=12,
+            )
+            right_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+            
+            lbl_octo = ttk.Label(right_card.body, image=octo_img)
+            lbl_octo.pack(pady=(2, 6))
+            
+            tips_lbl = ttk.Label(
+                right_card.body,
+                text="🛡️ Без токена: лимит 60 запр/час.\n🟢 С токеном GitHub: 5 000 запр/час.\n\nТокены шифруются криптографией Windows DPAPI и никогда не сохраняются в открытом виде.",
+                font=("Segoe UI Variable Text", 9),
+                foreground="#8b949e",
+                justify="left",
+            )
+            tips_lbl.pack(fill="x", padx=4)
 
     def _build_tab_advanced(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Сортировка", font=("Segoe UI Variable Display", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        sort_combo = ttk.Combobox(parent, textvariable=self.sort_var, values=tuple(SORT_OPTIONS.keys()), state="readonly", width=20)
+        parent.grid_columnconfigure(0, weight=3)
+        parent.grid_columnconfigure(1, weight=2)
+
+        left_pane = ttk.Frame(parent)
+        left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        for c in range(2):
+            left_pane.grid_columnconfigure(c, weight=1)
+
+        ttk.Label(left_pane, text="Сортировка", font=("Segoe UI Variable Display", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        sort_combo = ttk.Combobox(left_pane, textvariable=self.sort_var, values=tuple(SORT_OPTIONS.keys()), state="readonly", width=20)
         sort_combo.grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(0, 12))
-        order_combo = ttk.Combobox(parent, textvariable=self.order_var, values=tuple(ORDER_OPTIONS.keys()), state="readonly", width=20)
+        order_combo = ttk.Combobox(left_pane, textvariable=self.order_var, values=tuple(ORDER_OPTIONS.keys()), state="readonly", width=20)
         order_combo.grid(row=1, column=1, sticky="w", pady=(0, 12))
 
-        ttk.Label(parent, text="Настройки движка (Engine)", font=("Segoe UI Variable Display", 11, "bold")).grid(row=2, column=0, columnspan=4, sticky="w", pady=(12, 8))
-        self._add_labeled_entry(parent, "Размер пакета", self.batch_size_var, row=3)
-        self._add_labeled_entry(parent, "Параллельных потоков", self.workers_var, row=4)
-        self._add_labeled_entry(parent, "Повторы при ошибке", self.retry_failed_var, row=5)
-        self._add_labeled_entry(parent, "Пауза перед повтором (сек)", self.retry_delay_var, row=6)
+        ttk.Label(left_pane, text="Настройки движка (Engine)", font=("Segoe UI Variable Display", 11, "bold")).grid(row=2, column=0, columnspan=4, sticky="w", pady=(12, 8))
+        self._add_labeled_entry(left_pane, "Размер пакета", self.batch_size_var, row=3)
+        self._add_labeled_entry(left_pane, "Параллельных потоков", self.workers_var, row=4)
+        self._add_labeled_entry(left_pane, "Повторы при ошибке", self.retry_failed_var, row=5)
+        self._add_labeled_entry(left_pane, "Пауза перед повтором (сек)", self.retry_delay_var, row=6)
         
-        ttk.Label(parent, text="Настройки Git Clone", font=("Segoe UI Variable Display", 11, "bold")).grid(row=7, column=0, columnspan=4, sticky="w", pady=(12, 8))
-        self._add_labeled_entry(parent, "Таймаут клонирования (сек)", self.clone_timeout_var, row=8)
-        self._add_labeled_entry(parent, "Глубина истории Git (1 = только последняя версия)", self.clone_depth_var, row=9)
+        ttk.Label(left_pane, text="Настройки Git Clone", font=("Segoe UI Variable Display", 11, "bold")).grid(row=7, column=0, columnspan=4, sticky="w", pady=(12, 8))
+        self._add_labeled_entry(left_pane, "Таймаут клонирования (сек)", self.clone_timeout_var, row=8)
+        self._add_labeled_entry(left_pane, "Глубина истории Git (1 = только последняя версия)", self.clone_depth_var, row=9)
         
-        clone_toggles = ttk.Frame(parent)
+        clone_toggles = ttk.Frame(left_pane)
         clone_toggles.grid(row=10, column=0, columnspan=4, sticky="w", pady=(8, 12))
         ttk.Checkbutton(clone_toggles, text="Partial clone", variable=self.clone_partial_var).pack(side="left", padx=(0, 16))
         ttk.Checkbutton(clone_toggles, text="Одна ветка", variable=self.clone_single_branch_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(clone_toggles, text="Без тегов", variable=self.clone_no_tags_var).pack(side="left", padx=(0, 16))
+        ttk.Checkbutton(clone_toggles, text="Без тегов", variable=self.clone_no_tags_var).pack(side="left")
 
-        ttk.Label(parent, text="Дополнительные флаги поиска", font=("Segoe UI Variable Display", 11, "bold")).grid(row=11, column=0, columnspan=4, sticky="w", pady=(12, 8))
-        self._add_labeled_entry(parent, "SQLite export (опц.)", self.export_sqlite_var, row=12)
-        self._add_labeled_entry(parent, "GraphQL batch", self.graphql_batch_size_var, row=13)
-        self._add_labeled_entry(parent, "Deep max repos", self.deep_relevance_max_repos_var, row=14)
-        self._add_labeled_entry(parent, "Deep min score (0..1)", self.deep_relevance_min_score_var, row=15)
+        ttk.Label(left_pane, text="Дополнительные флаги поиска", font=("Segoe UI Variable Display", 11, "bold")).grid(row=11, column=0, columnspan=4, sticky="w", pady=(12, 8))
+        self._add_labeled_entry(left_pane, "SQLite export (опц.)", self.export_sqlite_var, row=12)
+        self._add_labeled_entry(left_pane, "GraphQL batch", self.graphql_batch_size_var, row=13)
+        self._add_labeled_entry(left_pane, "Deep max repos", self.deep_relevance_max_repos_var, row=14)
+        self._add_labeled_entry(left_pane, "Deep min score (0..1)", self.deep_relevance_min_score_var, row=15)
         
-        flags = ttk.Frame(parent)
+        flags = ttk.Frame(left_pane)
         flags.grid(row=16, column=0, columnspan=4, sticky="w", pady=(8, 12))
         ttk.Checkbutton(flags, text="Инкрементально (Продолжить с места остановки)", variable=self.incremental_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(flags, text="Быстрый поиск (до 1000 проектов, без шардирования)", variable=self.no_sharding_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(flags, text="GraphQL enrichment", variable=self.graphql_enrich_var).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(flags, text="Глубокий анализ релевантности (по README)", variable=self.deep_relevance_var).pack(side="left", padx=(0, 16))
+        ttk.Checkbutton(flags, text="Быстрый поиск (до 1000 проектов, без шардирования)", variable=self.no_sharding_var).pack(side="left")
 
-        for col in range(2):
-            parent.grid_columnconfigure(col, weight=1 if col == 1 else 0)
+        # Right Hero Card
+        vault_img = self._get_asset_image("hero_storage_vault.png", (170, 170))
+        if vault_img:
+            right_card = CardFrame(
+                parent,
+                title="⚡ Высокоскоростной движок",
+                subtitle="Параллельное клонирование и упаковка",
+                accent_color="#238636",
+                padding=12,
+            )
+            right_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+            
+            lbl_vault = ttk.Label(right_card.body, image=vault_img)
+            lbl_vault.pack(pady=(2, 6))
+            
+            info_lbl = ttk.Label(
+                right_card.body,
+                text="⚡ Архитектура производительности:\n• Обход лимита 1000 репозиториев\n• Адаптивное шардирование интервалов\n• Защита от зависаний при длинных путях Windows MAX_PATH\n• Экспорт в Repomix для ИИ-анализа",
+                font=("Segoe UI Variable Text", 9),
+                foreground="#8b949e",
+                justify="left",
+            )
+            info_lbl.pack(fill="x", padx=4)
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         mode_frame = ttk.Frame(parent)
@@ -2522,9 +2696,9 @@ class GitHubSearchGUI:
         if not self.log_text:
             return
             
-        # Clean verbose technical config dump from cluttering user UI
-        if "retry_failed_clones=" in message and "clone_timeout=" in message:
-            message = "🚀 Запуск процесса сбора репозиториев..."
+        # Clean verbose debug file path and dictionary dumps from user UI
+        if message.startswith("Debug-лог:") or ("retry_failed_clones=" in message and "clone_timeout=" in message):
+            return
             
         self.log_text.configure(state="normal")
         
