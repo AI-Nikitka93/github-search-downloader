@@ -43,6 +43,13 @@ from tkinter import (
 from tkinter import ttk
 
 
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+
 def enable_high_dpi_awareness() -> None:
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -51,6 +58,32 @@ def enable_high_dpi_awareness() -> None:
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
             pass
+
+
+def apply_windows11_modern_chrome(window_handle: int, dark: bool = True) -> None:
+    """Enables Windows 11 DWM Immersive Dark Mode and Rounded Corners."""
+    try:
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        DWMWCP_ROUND = 2  # DWM_WINDOW_CORNER_PREFERENCE::DWMWCP_ROUND
+
+        value = ctypes.c_int(1 if dark else 0)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+
+        corner_value = ctypes.c_int(DWMWCP_ROUND)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(corner_value),
+            ctypes.sizeof(corner_value),
+        )
+    except Exception:
+        pass
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -342,53 +375,68 @@ class AboutDialog(Toplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title(f"О программе — {APP_DISPLAY_NAME}")
-        self.geometry("540x440")
+        self.geometry("560x520")
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
 
-        container = ttk.Frame(self, padding=24)
+        apply_windows11_modern_chrome(self.winfo_id(), dark=(sv_ttk.get_theme() == "dark"))
+
+        container = ttk.Frame(self, padding=20)
         container.pack(fill=BOTH, expand=True)
+
+        self._logo_img = None
+        icon_path = ROOT_DIR / "assets" / "icon.png"
+        if PIL_AVAILABLE and icon_path.exists():
+            try:
+                pil_im = Image.open(icon_path).convert("RGBA")
+                pil_im.thumbnail((84, 84), Image.Resampling.LANCZOS)
+                self._logo_img = ImageTk.PhotoImage(pil_im)
+                lbl_logo = ttk.Label(container, image=self._logo_img)
+                lbl_logo.pack(anchor="center", pady=(0, 6))
+            except Exception:
+                pass
 
         title = ttk.Label(
             container,
             text=APP_DISPLAY_NAME,
-            font=("Segoe UI Variable Display", 16, "bold"),
+            font=("Segoe UI Variable Display", 15, "bold"),
         )
-        title.pack(anchor="center", pady=(0, 4))
+        title.pack(anchor="center", pady=(0, 2))
 
         ver = ttk.Label(
             container,
             text=f"Версия {__version__} (Harvest Edition)",
+            font=("Segoe UI Variable Text", 10),
             foreground="#57606a",
         )
-        ver.pack(anchor="center", pady=(0, 16))
+        ver.pack(anchor="center", pady=(0, 12))
 
         desc = (
-            f"{APP_DISPLAY_NAME} — инструмент для интеллектуального поиска, "
-            "фильтрации нейросетями (Ollama, DeepSeek, OpenAI) и пакетной параллельной "
-            "загрузки исходного кода из GitHub.\n\n"
+            f"{APP_DISPLAY_NAME} — современный инструмент для интеллектуального поиска, "
+            "фильтрации нейросетями (OpenRouter, Groq, NVIDIA NIM, Mistral, Ollama, DeepSeek) "
+            "и пакетной параллельной загрузки исходного кода из GitHub.\n\n"
             "• Автоматический обход лимитов через шардирование по датам\n"
             "• Надежная защита токенов через Windows DPAPI\n"
             "• Скоростное клонирование (blobless / shallow clone)\n"
             "• Экспорт в SQLite (WAL mode), CSV и AI-ready формат (Repomix)"
         )
-        ttk.Label(container, text=desc, wraplength=480, justify="left").pack(anchor="w", pady=(0, 16))
+        ttk.Label(container, text=desc, wraplength=500, justify="left", font=("Segoe UI Variable Text", 9)).pack(anchor="w", pady=(0, 12))
 
         links_frame = ttk.Frame(container)
-        links_frame.pack(fill="x", pady=(0, 16))
+        links_frame.pack(fill="x", pady=(0, 12))
 
         ttk.Button(
             links_frame,
             text="🌐 Репозиторий GitHub",
             command=lambda: webbrowser.open(GITHUB_REPO_URL),
-        ).pack(side=LEFT, padx=4)
+        ).pack(side=LEFT, padx=(0, 6))
 
         ttk.Button(
             links_frame,
             text="📖 Документация",
             command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"),
-        ).pack(side=LEFT, padx=4)
+        ).pack(side=LEFT)
 
         btn_row = ttk.Frame(container)
         btn_row.pack(side="bottom", fill="x")
@@ -575,13 +623,16 @@ class FirstRunWizard(Toplevel):
     def __init__(self, master, on_finish_callback=None):
         super().__init__(master)
         self.title(f"Первоначальная настройка — {APP_DISPLAY_NAME}")
-        self.geometry("780x560")
+        self.geometry("840x660")
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
 
+        apply_windows11_modern_chrome(self.winfo_id(), dark=(sv_ttk.get_theme() == "dark"))
+
         self.on_finish_callback = on_finish_callback
         self.current_step = 1
+        self._hero_img_refs = {}
 
         self.github_user_var = StringVar(value="Не подключен")
         self.github_rate_limit_var = StringVar(value="Лимит: 60 запросов/час")
@@ -623,12 +674,30 @@ class FirstRunWizard(Toplevel):
         self.oauth_cancel_event.set()
         self.destroy()
 
+    def _get_hero_photo(self, filename: str, width: int, height: int):
+        if not PIL_AVAILABLE:
+            return None
+        cache_key = f"{filename}_{width}x{height}"
+        if cache_key in self._hero_img_refs:
+            return self._hero_img_refs[cache_key]
+        path = ROOT_DIR / "assets" / filename
+        if not path.exists():
+            return None
+        try:
+            pil_im = Image.open(path).convert("RGBA")
+            pil_im.thumbnail((width, height), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(pil_im)
+            self._hero_img_refs[cache_key] = photo
+            return photo
+        except Exception:
+            return None
+
     def _build_ui(self):
         self.container = ttk.Frame(self, padding=20)
         self.container.pack(fill=BOTH, expand=True)
 
         self.header_frame = ttk.Frame(self.container)
-        self.header_frame.pack(fill="x", pady=(0, 15))
+        self.header_frame.pack(fill="x", pady=(0, 12))
 
         self.step_label = ttk.Label(
             self.header_frame,
@@ -637,14 +706,14 @@ class FirstRunWizard(Toplevel):
         )
         self.step_label.pack(side=LEFT)
 
-        self.progress_bar = ttk.Progressbar(self.header_frame, length=200, mode="determinate", value=25)
+        self.progress_bar = ttk.Progressbar(self.header_frame, length=220, mode="determinate", value=25)
         self.progress_bar.pack(side=RIGHT)
 
         self.content_frame = ttk.Frame(self.container)
         self.content_frame.pack(fill=BOTH, expand=True)
 
         self.nav_frame = ttk.Frame(self.container)
-        self.nav_frame.pack(fill="x", pady=(15, 0))
+        self.nav_frame.pack(fill="x", pady=(12, 0))
 
         self.btn_back = ttk.Button(self.nav_frame, text="⬅ Назад", command=self._prev_step)
         self.btn_back.pack(side=LEFT)
@@ -665,7 +734,7 @@ class FirstRunWizard(Toplevel):
         self.btn_skip.pack_forget()
 
         if step == 1:
-            self.step_label.configure(text="Шаг 1 из 4: Авторизация GitHub (1-Click)")
+            self.step_label.configure(text="Шаг 1 из 4: Авторизация GitHub (1-Click OAuth)")
             self.btn_skip.pack(side=LEFT, padx=10)
             self._render_step1(self.content_frame)
         elif step == 2:
@@ -681,15 +750,20 @@ class FirstRunWizard(Toplevel):
             self._render_step4(self.content_frame)
 
     def _render_step1(self, parent):
-        box = ttk.LabelFrame(parent, text=" 🐙 Подключение учетной записи GitHub ", padding=15)
+        box = ttk.LabelFrame(parent, text=" 🐙 Подключение учетной записи GitHub ", padding=12)
         box.pack(fill=BOTH, expand=True)
+
+        hero_photo = self._get_hero_photo("wizard_step1_hero.png", 520, 160)
+        if hero_photo:
+            lbl_banner = ttk.Label(box, image=hero_photo)
+            lbl_banner.pack(anchor="center", pady=(0, 8))
 
         ttk.Label(
             box,
             text="Авторизация увеличивает лимит запросов к API GitHub с 60 до 5 000 в час,\n"
             "что позволяет мгновенно находить и анализировать тысячи проектов.",
-            font=("Segoe UI Variable Text", 10),
-        ).pack(anchor="w", pady=(0, 12))
+            font=("Segoe UI Variable Text", 9),
+        ).pack(anchor="w", pady=(0, 8))
 
         btn_row = ttk.Frame(box)
         btn_row.pack(fill="x", pady=5)
@@ -785,8 +859,13 @@ class FirstRunWizard(Toplevel):
         ttk.Label(box, textvariable=self.disk_info_var, font=("Segoe UI", 10)).pack(anchor="w", pady=10)
 
     def _render_step3(self, parent):
-        box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ-помощника ", padding=15)
+        box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ-помощника ", padding=12)
         box.pack(fill=BOTH, expand=True)
+
+        hero_photo = self._get_hero_photo("wizard_step3_ai_hero.png", 520, 150)
+        if hero_photo:
+            lbl_banner = ttk.Label(box, image=hero_photo)
+            lbl_banner.pack(anchor="center", pady=(0, 6))
 
         # 1. Локальный ИИ (Ollama)
         r1 = ttk.Radiobutton(
@@ -1225,6 +1304,8 @@ class GitHubSearchGUI:
         self.root.geometry("1180x940")
         self.root.minsize(1080, 820)
 
+        apply_windows11_modern_chrome(self.root.winfo_id(), dark=(sv_ttk.get_theme() == "dark"))
+
         self._icon_image: PhotoImage | None = None
         icon_ico = ROOT_DIR / "assets" / "icon.ico"
         icon_png = ROOT_DIR / "assets" / "icon.png"
@@ -1233,10 +1314,15 @@ class GitHubSearchGUI:
                 self.root.iconbitmap(str(icon_ico))
             except Exception:
                 pass
-        elif icon_png.exists():
+        if icon_png.exists():
             try:
-                self._icon_image = PhotoImage(file=str(icon_png))
-                self.root.iconphoto(True, self._icon_image)
+                if PIL_AVAILABLE:
+                    pil_icon = Image.open(icon_png).convert("RGBA")
+                    self._icon_image = ImageTk.PhotoImage(pil_icon)
+                    self.root.iconphoto(True, self._icon_image)
+                else:
+                    self._icon_image = PhotoImage(file=str(icon_png))
+                    self.root.iconphoto(True, self._icon_image)
             except Exception:
                 pass
 
@@ -1499,6 +1585,7 @@ class GitHubSearchGUI:
             dark = sv_ttk.get_theme() == "dark"
         except Exception:
             dark = False
+        apply_windows11_modern_chrome(self.root.winfo_id(), dark=dark)
         self._apply_theme_colors(dark)
 
     def _apply_theme_colors(self, dark: bool | None = None) -> None:
