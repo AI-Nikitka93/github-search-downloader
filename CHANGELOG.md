@@ -1,55 +1,55 @@
 # Changelog
 
-Все заметные изменения в проекте **GitHub Search & Downloader** документируются в этом файле.
+All notable changes to the **GitHub Search & Downloader** project will be documented in this file.
 
-Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/) и проект следует [Semantic Versioning 2.0.0](https://semver.org/lang/ru/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ---
 
 ## [1.1.0] — 2026-09-01
 
-### 🚀 Добавлено (Added)
-- **Мастер первого запуска (Onboarding Wizard)**: 4-шаговый интерактивный мастер настройки при первом запуске:
-  - 1-клик авторизация через GitHub OAuth Device Code Flow (с автокопированием кода в буфер обмена).
-  - Выбор директории сохранения репозиториев с индикатором свободного места на диске.
-  - Автоопределение локального AI-сервера Ollama и доступных моделей (`llama3.2`, `mistral`), либо ввод ключей DeepSeek / OpenAI.
-  - Быстрые шаблоны поисковых запросов в 1 клик.
-- **Информационный статус-бар (Header Status Widget)**: панель в шапке GUI с отображением логина GitHub, оставшихся лимитов API, статуса AI-модели и свободного места на диске.
-- **Встроенная система автообновлений (In-App Self-Updater)**:
-  - Проверка новых релизов через GitHub Releases API с ETag-кэшированием (`304 Not Modified`).
-  - Окно просмотра списка изменений и обновления в 1 клик (`UpdateCheckerDialog`).
-  - Фоновый процесс Windows (`apply_update.bat`) для атомарной замены файлов без блокировки запущенного EXE.
-  - CLI команды `--version` и `--check-updates`.
-- **Экспорт для AI (Repomix XML)**: упаковка репозиториев в единый структурированный XML-файл для передачи в контекст LLM.
-- **Новое меню приложения**: пункты «Справка» -> «О программе», «Проверить обновления...», «Мастер первого запуска...».
+### 🚀 Added
+- **First-Run Onboarding Wizard**: 4-step interactive onboarding modal:
+  - 1-click authentication via GitHub OAuth Device Code Flow (with auto-clipboard copy of user code via `clip.exe`).
+  - Storage & workspace directory selection with real-time free disk space probe.
+  - Automatic detection of local Ollama server (`http://localhost:11434`) and installed models (`llama3.2`, `mistral`), or secure cloud API key entry (DeepSeek / OpenAI).
+  - Quick-start search presets in 1 click.
+- **Header Status Widget**: Live status pill bar showing GitHub user handle, remaining API request quota (e.g. `4998/5000`), AI provider status, and free disk space.
+- **In-App Self-Updater Engine**:
+  - GitHub Releases API integration with 24-hour ETag rate-limit caching (`304 Not Modified`).
+  - Interactive changelog viewer and 1-click self-update execution (`UpdateCheckerDialog`).
+  - Non-blocking detached Windows batch helper (`apply_update.bat`) for atomic binary replacement.
+  - CLI commands `--version` and `--check-updates`.
+- **AI Repomix XML Exporter**: Formats entire repository source code and trees into a structured XML format for LLM context ingestion.
+- **Application Menu Bar**: Added native menus (`Help -> About`, `Help -> Check for Updates...`, `Help -> First-Run Wizard...`).
 
-### 🔒 Безопасность (Security Hardening)
-- **CWE-59 (Symlink Traversal)**: предотвращение бесконечных рекурсивных циклов и утечки файлов вне репозитория при построении дерева каталогов.
-- **CWE-88 (Argument Injection)**: разделитель аргументов `--` перед удаленными URL в `git clone`.
-- **CWE-1236 (CSV Formula / DDE Injection)**: экранирование спецсимволов (`=`, `+`, `-`, `@`, `\t`, `\r`) при экспорте в Excel/CSV.
-- **Zip-Slip & DOS Devices**: строгая проверка архивов обновлений на относительные пути (`..`), абсолютные диски (`C:`) и зарезервированные имена Windows (`CON`, `NUL`, `COM1..9`).
-- **Защита секретов**: шифрование токенов и API-ключей в хранилище Windows DPAPI (`CryptProtectData`).
+### 🔒 Security Hardening
+- **CWE-59 (Symlink Traversal)**: Cycle prevention and canonical path boundary checks in repository tree mapping.
+- **CWE-88 (Command Argument Injection)**: Added `--` argument separator before remote URLs in `git clone`.
+- **CWE-1236 (CSV Formula / DDE Injection)**: Automatic sanitization of dangerous leading spreadsheet characters (`=`, `+`, `-`, `@`, `\t`, `\r`).
+- **Zip-Slip & Windows DOS Device Protection**: Validates update archives against relative traversals (`..`), absolute drive paths (`C:`), and DOS reserved device names (`CON`, `NUL`, `COM1..9`, `LPT1..9`).
+- **Encrypted Secret Storage**: Hardened Windows DPAPI storage for personal access tokens and cloud AI keys.
 
-### 📦 Сборка и CI/CD (Packaging)
-- Скрипт сборки инсталлятора Inno Setup 6 ([`packaging/installer.iss`](packaging/installer.iss)).
-- Автоматический GitHub Actions workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) для публикации релизов при пуше тега `v*.*.*`.
-- Генерация манифестов целостности `checksums.sha256` и `SHA256SUMS.txt`.
+### 📦 Packaging & CI/CD
+- Inno Setup 6 script (`packaging/installer.iss`) for generating Windows Setup installers.
+- GitHub Actions workflow (`.github/workflows/release.yml`) for automated builds on tag push `v*.*.*`.
+- Automated generation of SHA-256 integrity manifests (`checksums.sha256` and `SHA256SUMS.txt`).
 
 ---
 
 ## [1.0.1] — 2026-08-15
 
-### 🛠 Исправлено (Fixed)
-- Корректная обработка вторичных лимитов GitHub Search API (`403 Secondary Rate Limit`).
-- Добавлено повторное автоматическое разделение интервалов дат при превышении 1000 репозиториев в шарде.
+### 🛠 Fixed
+- Graceful recovery and backoff for GitHub Search API secondary rate limits (`403 Secondary Rate Limit`).
+- Automatic recursive date-range bisection when shard results exceed 1,000 repositories.
 
 ---
 
 ## [1.0.0] — 2026-08-01
 
-### 🎉 Первый релиз (Initial Release)
-- Базовый GUI на Tkinter с темой `sv_ttk` (светлая/тёмная).
-- Алгоритм шардирования по датам создания репозиториев для обхода лимита в 1000 результатов GitHub API.
-- Многопоточный загрузчик с поддержкой частичного клонирования (`--filter=blob:none`).
-- AI-фильтрация репозиториев по релевантности (Ollama / OpenAI-compatible).
-- Экспорт метаданных в JSON, CSV и SQLite.
+### 🎉 Initial Release
+- Desktop GUI built with Tkinter and `sv_ttk` (light/dark themes).
+- Date-sharded search algorithm overcoming GitHub's 1,000-result search limit.
+- Multi-threaded parallel downloader with shallow (`--depth 1`) and partial (`--filter=blob:none`) cloning.
+- AI-assisted relevance evaluation via Ollama and OpenAI-compatible endpoints.
+- Multi-format metadata export to JSON, CSV, and SQLite.
