@@ -1978,11 +1978,12 @@ class GitHubSearchGUI:
         text_var: StringVar,
         row: int,
         show: str | None = None,
-    ) -> None:
+    ) -> ttk.Entry:
         label = ttk.Label(parent, text=label_text)
         label.grid(row=row, column=0, sticky=W, padx=(0, 8), pady=4)
         entry = ttk.Entry(parent, textvariable=text_var, width=60, show=show)
         entry.grid(row=row, column=1, sticky=W, pady=4)
+        return entry
 
     def _add_token_row(self, parent: object, row: int) -> None:
         label = ttk.Label(parent, text="GitHub Token (необязательно)")
