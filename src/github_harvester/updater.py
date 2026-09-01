@@ -402,23 +402,29 @@ exit /b 0
         # Batch helper script for non-blocking atomic replacement on Windows
         helper_bat = zip_path.parent / "apply_update.bat"
         bat_content = f"""@echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 title Updating {APP_NAME}...
 
 echo Waiting for application (PID {parent_pid}) to close...
+set /a WAIT_COUNT=0
 :wait_loop
 tasklist /FI "PID eq {parent_pid}" 2>NUL | find /I "{parent_pid}" >NUL
 if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
+    set /a WAIT_COUNT+=1
+    if !WAIT_COUNT! geq 10 (
+        taskkill /F /PID {parent_pid} >nul 2>&1
+    )
     goto wait_loop
 )
 
 echo Replacing application files in "{target_dir}"...
 timeout /t 1 /nobreak >NUL
 
-xcopy /Y /E /I "{extract_dir}\\*" "{target_dir}\\" >NUL
-if errorlevel 1 (
-    echo Update failed!
+robocopy "{extract_dir}" "{target_dir}" /E /NP /R:3 /W:1 >nul
+if errorlevel 8 (
+    echo Robocopy failed with error %errorlevel%!
     pause
     exit /b 1
 )
@@ -433,7 +439,7 @@ start "" "{current_exe_path}"
 (goto) 2>nul & del "%~f0"
 exit
 """
-        helper_bat.write_text(bat_content, encoding="cp866")
+        helper_bat.write_text(bat_content, encoding="utf-8")
 
         # Launch detached helper
         CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -444,4 +450,4 @@ exit
             close_fds=True,
         )
 
-        sys.exit(0)
+        os._exit(0)

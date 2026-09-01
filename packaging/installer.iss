@@ -1,7 +1,7 @@
 #define MyAppName "GitHub Search Downloader"
 #define MyAppExeName "GithubSearchDownloader.exe"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.0"
+  #define MyAppVersion "1.1.1"
 #endif
 #define MyAppPublisher "Nikita Kizevich"
 #define MyAppURL "https://github.com/AI-Nikitka93/github-search-downloader"
@@ -30,18 +30,32 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=yes
+AppMutex=GithubSearchDownloaderAppMutex
+CloseApplications=force
+CloseApplicationsFilter=GithubSearchDownloader.exe
 RestartApplications=no
+UsePreviousAppDir=yes
+DisableDirPage=auto
+DirExistsWarning=no
+CreateUninstallRegKey=yes
+UpdateUninstallLogAppName=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
+[CustomMessages]
+english.AppRunningWarning=Setup detected that %1 is currently running.%n%nPlease close all instances of %1 before continuing.%n%nClick 'Retry' to try again after closing the program, or 'Cancel' to exit setup.
+russian.AppRunningWarning=Установщик обнаружил, что приложение %1 запущено.%n%nПожалуйста, закройте все запущенные копии %1 перед продолжением установки.%n%nНажмите «Повторить» после закрытия программы или «Отмена» для выхода.
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+Type: files; Name: "{app}\install_manifest.json"
+
 [Files]
-Source: "{#DistExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistExe}"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "{#AssetsDir}\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -56,6 +70,72 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader"; ValueType: string; ValueName: "DisplayVersion"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader"; ValueType: string; ValueName: "Publisher"; ValueData: "{#MyAppPublisher}"; Flags: uninsdeletekey
+[Code]
+const
+  TargetExeName = 'GithubSearchDownloader.exe';
+  AppMutexIdentifier = 'GithubSearchDownloaderAppMutex';
+  LegacyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader';
+
+function IsAppProcessRunning(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := CheckForMutexes(AppMutexIdentifier);
+  if not Result then
+  begin
+    if Exec('cmd.exe', '/c tasklist /FI "IMAGENAME eq ' + TargetExeName + '" 2>nul | find /I "' + TargetExeName + '" >nul', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := (ResultCode = 0);
+    end;
+  end;
+end;
+
+function TerminateAppProcess(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec('taskkill.exe', '/F /IM ' + TargetExeName + ' /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(400);
+  Result := not IsAppProcessRunning();
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  while IsAppProcessRunning() do
+  begin
+    if MsgBox(FmtMessage(CustomMessage('AppRunningWarning'), ['{#MyAppName}']), mbConfirmation, MB_RETRYCANCEL) = idRetry then
+    begin
+      TerminateAppProcess();
+    end
+    else
+    begin
+      Result := False;
+      Exit;
+    end;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  NeedsRestart := False;
+  Result := '';
+  if IsAppProcessRunning() then
+  begin
+    if not TerminateAppProcess() then
+    begin
+      Result := FmtMessage(CustomMessage('AppRunningWarning'), ['{#MyAppName}']);
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    if RegKeyExists(HKCU, LegacyUninstallKey) then
+    begin
+      RegDeleteKeyIncludingSubkeys(HKCU, LegacyUninstallKey);
+    end;
+  end;
+end;

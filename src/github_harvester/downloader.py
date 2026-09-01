@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -13,6 +14,30 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from github_harvester.models import Repo
+
+
+def safe_rmtree_windows(target_path: Path, retries: int = 5, delay: float = 0.3) -> bool:
+    """Robust directory tree removal for Windows dealing with read-only git files and handle delays."""
+    if not target_path.exists():
+        return True
+
+    def on_rm_error(func, path, exc_info):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(target_path, onerror=on_rm_error)
+            if not target_path.exists():
+                return True
+        except Exception:
+            pass
+        time.sleep(delay)
+
+    return not target_path.exists()
 
 
 INVALID_PATH_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
@@ -165,7 +190,7 @@ def clone_repository(
             )
         except Exception as exc:
             if target_path.exists():
-                shutil.rmtree(target_path, ignore_errors=True)
+                safe_rmtree_windows(target_path)
             logger(f"Ошибка запуска git clone для {repository.full_name}: {exc}")
             return CloneResult(repository.full_name, target_path, "failed", f"Ошибка запуска git clone: {exc}")
 
@@ -178,7 +203,7 @@ def clone_repository(
                 except subprocess.TimeoutExpired:
                     kill_process_tree(process.pid)
                 if target_path.exists():
-                    shutil.rmtree(target_path, ignore_errors=True)
+                    safe_rmtree_windows(target_path)
                 return CloneResult(
                     repository.full_name,
                     target_path,
@@ -207,7 +232,7 @@ def clone_repository(
             except subprocess.TimeoutExpired:
                 kill_process_tree(process.pid)
             if target_path.exists():
-                shutil.rmtree(target_path, ignore_errors=True)
+                safe_rmtree_windows(target_path)
             return CloneResult(
                 repository.full_name,
                 target_path,
@@ -225,7 +250,7 @@ def clone_repository(
         error_message = stderr_text or f"git clone завершился с кодом {process.returncode}"
         logger(f"git clone failed: {repository.full_name}: {error_message}")
         if target_path.exists():
-            shutil.rmtree(target_path, ignore_errors=True)
+            safe_rmtree_windows(target_path)
         return CloneResult(repository.full_name, target_path, "failed", error_message)
 
 

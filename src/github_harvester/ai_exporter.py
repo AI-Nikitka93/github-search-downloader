@@ -79,7 +79,17 @@ def generate_repo_map(repo_path: Path) -> str:
 
 from github_harvester.downloader import sanitize_path_segment
 
-def export_repo_for_ai(repo_name: str, repo_path: Path, output_root: Path) -> Path:
+MAX_FILE_SIZE_BYTES = 1024 * 1024         # 1 MB per file
+MAX_TOTAL_EXPORT_BYTES = 25 * 1024 * 1024   # 25 MB per repository
+
+
+def export_repo_for_ai(
+    repo_name: str,
+    repo_path: Path,
+    output_root: Path,
+    max_file_size: int = MAX_FILE_SIZE_BYTES,
+    max_total_size: int = MAX_TOTAL_EXPORT_BYTES,
+) -> Path:
     """
     Generate an AI-ready XML dump (Repomix format) for a downloaded repository.
     Saves the result to output_root/ai_exports/repo_name.xml.
@@ -87,23 +97,21 @@ def export_repo_for_ai(repo_name: str, repo_path: Path, output_root: Path) -> Pa
     safe_name = sanitize_path_segment(repo_name.replace("/", "_"))
     ai_export_dir = output_root / "ai_exports"
     ai_export_dir.mkdir(parents=True, exist_ok=True)
-    
+
     export_file = ai_export_dir / f"{safe_name}.xml"
-    
     repo_map = generate_repo_map(repo_path)
-    
+    total_written_bytes = 0
+
     with open(export_file, "w", encoding="utf-8", errors="replace") as out_f:
-        out_f.write(f'<?xml version="1.0" encoding="UTF-8"?>\n')
+        out_f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         out_f.write(f'<repository name="{repo_name}">\n')
-        
         out_f.write('  <repo_map>\n')
         out_f.write('    <![CDATA[\n')
         out_f.write(repo_map + "\n")
         out_f.write('    ]]>\n')
         out_f.write('  </repo_map>\n\n')
-        
         out_f.write('  <files>\n')
-        
+
         for root, dirs, files in os.walk(repo_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRECTORIES]
             for file in files:
@@ -122,18 +130,33 @@ def export_repo_for_ai(repo_name: str, repo_path: Path, output_root: Path) -> Pa
                     continue
                 if is_binary_file(filepath):
                     continue
-                
+
                 try:
-                    rel_path = filepath.relative_to(repo_path)
+                    file_size = filepath.stat().st_size
+                    posix_rel_path = filepath.relative_to(repo_path).as_posix()
+
+                    if file_size > max_file_size:
+                        out_f.write(f'    <file path="{posix_rel_path}">\n')
+                        out_f.write(
+                            f'      <!-- Truncated: file size ({file_size} bytes) exceeds limit ({max_file_size} bytes) -->\n'
+                        )
+                        out_f.write('    </file>\n')
+                        continue
+
+                    if total_written_bytes + file_size > max_total_size:
+                        out_f.write('    <!-- Remaining repository files omitted: total export cap reached -->\n')
+                        break
+
                     content = filepath.read_text(encoding="utf-8", errors="replace")
                     content = content.replace("]]>", "]]]]><![CDATA[>")
-                    out_f.write(f'    <file path="{rel_path}">\n')
+                    out_f.write(f'    <file path="{posix_rel_path}">\n')
                     out_f.write(f'      <![CDATA[\n{content}\n      ]]>\n')
-                    out_f.write(f'    </file>\n')
+                    out_f.write('    </file>\n')
+                    total_written_bytes += file_size
                 except Exception as e:
                     print(f"Skipping file {filepath}: {e}")
-                    
+
         out_f.write('  </files>\n')
         out_f.write('</repository>\n')
-        
+
     return export_file

@@ -92,6 +92,7 @@ from github_harvester.service import (
 )
 from github_harvester.models import Repo
 from github_harvester.github_auth import GitHubOAuthDeviceFlow, get_github_cli_token
+from github_harvester.clipboard import copy_to_clipboard_async, safe_copy_to_clipboard
 from github_harvester.version import (
     APP_DISPLAY_NAME,
     APP_NAME,
@@ -537,6 +538,10 @@ class FirstRunWizard(Toplevel):
         self.oauth_code_var = StringVar(value="")
         self.verification_uri_var = StringVar(value="https://github.com/login/device")
         self.oauth_in_progress = False
+        self.oauth_cancel_event = threading.Event()
+        self.cached_ollama_models: list[str] = []
+
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         default_workspace = Path.home() / "Downloads" / "GitHubRepositories"
         self.workspace_var = StringVar(value=str(default_workspace))
@@ -554,6 +559,10 @@ class FirstRunWizard(Toplevel):
         self._show_step(1)
         self._update_disk_info()
         self._probe_ai_background()
+
+    def _on_close(self):
+        self.oauth_cancel_event.set()
+        self.destroy()
 
     def _build_ui(self):
         self.container = ttk.Frame(self, padding=20)
@@ -789,6 +798,7 @@ class FirstRunWizard(Toplevel):
         if self.oauth_in_progress:
             return
         self.oauth_in_progress = True
+        self.oauth_cancel_event.clear()
         self.github_status_msg_var.set("Запрос одноразового кода в GitHub...")
 
         def _worker():
@@ -798,17 +808,6 @@ class FirstRunWizard(Toplevel):
                 user_code = info["user_code"]
                 uri = info.get("verification_uri", "https://github.com/login/device")
 
-                try:
-                    subprocess.run(
-                        ["clip.exe"],
-                        input=user_code,
-                        text=True,
-                        check=False,
-                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
-                    )
-                except Exception:
-                    pass
-
                 self.after(0, lambda: self._on_code_received(user_code, uri))
                 webbrowser.open(uri)
 
@@ -816,6 +815,7 @@ class FirstRunWizard(Toplevel):
                     info["device_code"],
                     info.get("interval", 5),
                     lambda msg: self.after(0, lambda: self.github_status_msg_var.set(msg)),
+                    cancel_event=self.oauth_cancel_event,
                 )
 
                 store_secret(DEFAULT_SECRET_NAME, token)
@@ -830,8 +830,7 @@ class FirstRunWizard(Toplevel):
     def _on_code_received(self, user_code: str, uri: str):
         self.oauth_code_var.set(user_code)
         self.verification_uri_var.set(uri)
-        self.clipboard_clear()
-        self.clipboard_append(user_code)
+        copy_to_clipboard_async(user_code, tk_widget=self)
         if hasattr(self, "code_box_frame"):
             self.code_box_frame.pack(fill="x", pady=10, before=self.status_card)
         self.github_status_msg_var.set(f"⏳ Ожидание подтверждения кода {user_code} на сайте GitHub...")
@@ -839,19 +838,13 @@ class FirstRunWizard(Toplevel):
     def _copy_user_code(self):
         code = self.oauth_code_var.get().strip()
         if code:
-            self.clipboard_clear()
-            self.clipboard_append(code)
-            try:
-                subprocess.run(
-                    ["clip.exe"],
-                    input=code,
-                    text=True,
-                    check=False,
-                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
-                )
-            except Exception:
-                pass
-            self.github_status_msg_var.set(f"📋 Код {code} скопирован в буфер обмена!")
+            def _on_copied(ok: bool):
+                if ok:
+                    self.github_status_msg_var.set(f"📋 Код {code} скопирован в буфер обмена!")
+                else:
+                    self.github_status_msg_var.set(f"Код {code} (не удалось скопировать в буфер)")
+
+            copy_to_clipboard_async(code, tk_widget=self, on_complete=_on_copied)
 
     def _manual_token_entry(self):
         from tkinter import simpledialog
@@ -920,13 +913,14 @@ class FirstRunWizard(Toplevel):
             res = discover_local_models(timeout=3)
             if res:
                 provider, models = res
+                self.cached_ollama_models = list(models)
 
                 def _update():
                     self.ollama_status_var.set(f"🟢 Найден {provider.provider_type.upper()} ({len(models)} моделей)")
                     if hasattr(self, "combo_ollama"):
-                        self.combo_ollama["values"] = models
-                        if models:
-                            self.ollama_model_var.set(models[0])
+                        self.combo_ollama["values"] = self.cached_ollama_models
+                        if self.cached_ollama_models and not self.ollama_model_var.get():
+                            self.ollama_model_var.set(self.cached_ollama_models[0])
 
                 self.after(0, _update)
             else:
@@ -1255,13 +1249,19 @@ class GitHubSearchGUI:
         self.status_pill_widget.update_disk(out_path)
 
     def _toggle_theme(self) -> None:
-        sv_ttk.toggle_theme()
-        dark = sv_ttk.get_theme() == "dark"
+        try:
+            sv_ttk.toggle_theme()
+            dark = sv_ttk.get_theme() == "dark"
+        except Exception:
+            dark = False
         self._apply_theme_colors(dark)
 
     def _apply_theme_colors(self, dark: bool | None = None) -> None:
         if dark is None:
-            dark = sv_ttk.get_theme() == "dark"
+            try:
+                dark = sv_ttk.get_theme() == "dark"
+            except Exception:
+                dark = False
         sub_fg = "#8b949e" if dark else "#57606a"
         if getattr(self, "header_subtitle", None) and self.header_subtitle.winfo_exists():
             self.header_subtitle.configure(foreground=sub_fg)
@@ -1803,22 +1803,12 @@ class GitHubSearchGUI:
                 # Показываем код юзеру
                 def _show_code():
                     import tkinter.messagebox as mb
-                    import subprocess
                     
-                    # Копируем в буфер через clip.exe для 100% надежности
-                    try:
-                        subprocess.run(['clip.exe'], input=user_code, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
-                    except Exception as e:
-                        print(f"Clip copy failed: {e}")
-                    
-                    self.root.clipboard_clear()
-                    self.root.clipboard_append(user_code)
-                    self.root.update()
-                    
+                    copy_to_clipboard_async(user_code, tk_widget=self.root)
                     webbrowser.open(verification_uri)
                     mb.showinfo(
                         "Авторизация GitHub",
-                        f"Сейчас откроется браузер.\\n\\nВаш код подтверждения: {user_code}\\n(Код гарантированно скопирован в буфер обмена!)\\n\\nНа странице GitHub просто кликните на первое поле и нажмите Ctrl+V, чтобы код вставился автоматически."
+                        f"Сейчас откроется браузер.\n\nВаш код подтверждения: {user_code}\n(Код гарантированно скопирован в буфер обмена!)\n\nНа странице GitHub просто кликните на первое поле и нажмите Ctrl+V, чтобы код вставился автоматически."
                     )
                 self.root.after(0, _show_code)
                 
@@ -3049,13 +3039,18 @@ class GitHubSearchGUI:
             text=f"AI-Анализ завершен (Найдено: {len(rows)})",
             font=("Segoe UI", 12, "bold")
         ).pack(anchor=W)
+        is_dark = False
+        try:
+            is_dark = sv_ttk.get_theme() == "dark"
+        except Exception:
+            pass
         self.preview_subtitle = ttk.Label(
             top,
             text=(
                 "Отметьте нужные репозитории. Двойной клик по названию откроет репозиторий на GitHub.\n"
                 "Колонка «Код (push)» показывает дату последнего реального обновления кода."
             ),
-            foreground="#8b949e" if (sv_ttk.get_theme() == "dark") else "#57606a"
+            foreground="#8b949e" if is_dark else "#57606a"
         )
         self.preview_subtitle.pack(anchor=W, pady=(4, 0))
 
@@ -3673,14 +3668,76 @@ class GitHubSearchGUI:
             self.root.after(120, self._poll_events)
 
 
+APP_MUTEX_NAME = "GithubSearchDownloaderAppMutex"
+_APP_MUTEX_HANDLE: int | None = None
+
+
+def acquire_app_mutex(mutex_name: str = APP_MUTEX_NAME) -> bool:
+    """Acquires a named Windows mutex to enforce single-instance and allow Inno Setup detection.
+
+    Returns True if this is the first/primary instance, or False if another instance is already running.
+    """
+    global _APP_MUTEX_HANDLE
+    if os.name != "nt":
+        return True
+    try:
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        handle = kernel32.CreateMutexW(None, False, mutex_name)
+        if not handle:
+            return True
+        last_error = kernel32.GetLastError()
+        _APP_MUTEX_HANDLE = handle
+        if last_error == ERROR_ALREADY_EXISTS:
+            return False
+        return True
+    except Exception:
+        return True
+
+
+def release_app_mutex() -> None:
+    """Releases the Windows named mutex upon application exit."""
+    global _APP_MUTEX_HANDLE
+    if os.name == "nt" and _APP_MUTEX_HANDLE:
+        try:
+            ctypes.windll.kernel32.CloseHandle(_APP_MUTEX_HANDLE)
+        except Exception:
+            pass
+        _APP_MUTEX_HANDLE = None
+
+
+def activate_existing_instance() -> None:
+    """Attempts to bring an existing running instance of the application window to foreground."""
+    if os.name != "nt":
+        return
+    try:
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        hwnd = user32.FindWindowW(None, APP_DISPLAY_NAME)
+        if not hwnd:
+            hwnd = user32.FindWindowW(None, "GitHub Search Downloader")
+        if hwnd:
+            user32.ShowWindow(hwnd, SW_RESTORE)
+            user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
 def main() -> None:
     enable_high_dpi_awareness()
-    import sv_ttk
-    root = Tk()
-    sv_ttk.set_theme("dark")
-    GitHubSearchGUI(root)
-    root.mainloop()
+    if not acquire_app_mutex():
+        activate_existing_instance()
+        sys.exit(0)
+    try:
+        import sv_ttk
+        root = Tk()
+        sv_ttk.set_theme("dark")
+        GitHubSearchGUI(root)
+        root.mainloop()
+    finally:
+        release_app_mutex()
 
 
 if __name__ == "__main__":
     main()
+

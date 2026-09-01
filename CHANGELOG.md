@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.1.1] — 2026-09-01
+
+### 🛠 Fixed & Hardened
+- **Non-Blocking Clipboard Engine**: Implemented 64-bit type-safe Win32 API clipboard bindings (`src/github_harvester/clipboard.py`) with async daemon executor, eliminating UI freezes when clicking "Copy Code".
+- **Seamless In-Place Upgrades**:
+  - Inno Setup detects running instances (`AppMutex=GithubSearchDownloaderAppMutex`), closes them automatically (`CloseApplications=force`), cleanly overwrites files (`ignoreversion restartreplace`), and cleans legacy registry keys.
+  - PowerShell installer stops running processes with polling wait before copying.
+- **NTFS Read-Only Deletion Resilience**: Added `safe_rmtree_windows` with `os.chmod(..., stat.S_IWRITE)` retry handlers to cleanly delete locked git packfiles.
+- **AI Repomix Exporter Hardening**:
+  - Normalized path delimiters to standard POSIX slashes (`/`).
+  - Added per-file size cap (1 MB) and total repository export cap (25 MB) with truncation notices to prevent out-of-memory crashes.
+- **Cancellable OAuth Device Flow**: Added `cancel_event` support to `poll_for_token` so closing or skipping the wizard immediately terminates background network polling.
+- **Auto-Updater Batch Hardening**: Configured `apply_update.bat` with `chcp 65001` UTF-8 codepage, `robocopy` with retry, and fallback `taskkill` process termination.
+
+---
+
 ## [1.1.0] — 2026-09-01
 
 ### 🚀 Added

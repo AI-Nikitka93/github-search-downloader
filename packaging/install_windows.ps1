@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $SourceExe)) {
 }
 $ProductName = "GithubSearchDownloader"
 $DisplayName = "GitHub Search Downloader"
-$ProductVersion = "1.1.0"
+$ProductVersion = "1.1.1"
 $UninstallRegistrySubkey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader"
 $UninstallRegistryKey = "HKCU:\$UninstallRegistrySubkey"
 
@@ -38,7 +38,44 @@ if (-not $isDefaultInstallPath -and -not $PSBoundParameters.ContainsKey("Install
 
 New-Item -ItemType Directory -Force -Path $ResolvedInstallDir | Out-Null
 $TargetExe = Join-Path $ResolvedInstallDir "GithubSearchDownloader.exe"
-Copy-Item -LiteralPath $SourceExe -Destination $TargetExe -Force
+
+# Terminate running process if updating in-place to avoid Error 32 sharing violations
+$running = Get-CimInstance Win32_Process -Filter "Name='GithubSearchDownloader.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.ExecutablePath -or $_.ExecutablePath -eq $TargetExe }
+if (-not $running) {
+    $running = Get-Process -Name "GithubSearchDownloader" -ErrorAction SilentlyContinue
+}
+if ($running) {
+    Write-Host "Stopping running instance(s) of GithubSearchDownloader.exe before updating..."
+    foreach ($proc in $running) {
+        try {
+            $pidToStop = if ($proc.ProcessId) { $proc.ProcessId } else { $proc.Id }
+            Stop-Process -Id $pidToStop -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+    # Wait for process exit and file lock release
+    for ($i = 0; $i -lt 10; $i++) {
+        $alive = Get-Process -Name "GithubSearchDownloader" -ErrorAction SilentlyContinue
+        if (-not $alive) { break }
+        Start-Sleep -Milliseconds 200
+    }
+}
+
+# Copy application binary with retry in case of lingering antivirus / file lock
+$copySuccess = $false
+$maxAttempts = 5
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+        Copy-Item -LiteralPath $SourceExe -Destination $TargetExe -Force -ErrorAction Stop
+        $copySuccess = $true
+        break
+    } catch {
+        if ($attempt -eq $maxAttempts) {
+            throw "Failed to copy $SourceExe to ${TargetExe}. Error: $_"
+        }
+        Start-Sleep -Milliseconds 300
+    }
+}
 
 foreach ($fileName in @("README.md", "LICENSE.txt", "ARCHITECTURE.md", "uninstall_windows.ps1", "check_updates_windows.ps1", "update_channel.json")) {
     $sourcePath = Join-Path $SourceDir $fileName
