@@ -362,21 +362,46 @@ class SelfUpdater:
         source_dir: Path,
         target_dir: Path,
         target_exe: Path,
+        zip_path: Optional[Path] = None,
     ) -> None:
+        zip_cleanup = f'del /F /Q "{zip_path}" >NUL 2>&1' if zip_path else ""
         bat_script = f"""@echo off
-setlocal
-echo Waiting for process {pid} to exit...
-taskkill /F /PID {pid} >nul 2>&1
-timeout /t 1 /nobreak >nul
+chcp 65001 >nul
+setlocal enabledelayedexpansion
+title Updating {APP_NAME}...
+
+echo Waiting for application (PID {pid}) to close...
+set /a WAIT_COUNT=0
+:wait_loop
+tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >NUL
+    set /a WAIT_COUNT+=1
+    if !WAIT_COUNT! geq 10 (
+        taskkill /F /PID {pid} >nul 2>&1
+    )
+    goto wait_loop
+)
+
+echo Replacing application files in "{target_dir}"...
+timeout /t 1 /nobreak >NUL
 
 robocopy "{source_dir}" "{target_dir}" /E /NP /R:3 /W:1 >nul
 if errorlevel 8 (
-    echo Robocopy failed with error %errorlevel%
+    echo Robocopy failed with error %errorlevel%!
+    pause
     exit /b 1
 )
 
+echo Cleaning up update temporary files...
+rd /S /Q "{source_dir}" >NUL 2>&1
+{zip_cleanup}
+
+echo Restarting {APP_NAME}...
 start "" "{target_exe}"
+
 del /F /Q "{bat_path}" >nul 2>&1
+(goto) 2>nul & del "%~f0" >nul 2>&1
 exit /b 0
 """
         bat_path.write_text(bat_script, encoding="utf-8")
@@ -401,45 +426,14 @@ exit /b 0
 
         # Batch helper script for non-blocking atomic replacement on Windows
         helper_bat = zip_path.parent / "apply_update.bat"
-        bat_content = f"""@echo off
-chcp 65001 >nul
-setlocal enabledelayedexpansion
-title Updating {APP_NAME}...
-
-echo Waiting for application (PID {parent_pid}) to close...
-set /a WAIT_COUNT=0
-:wait_loop
-tasklist /FI "PID eq {parent_pid}" 2>NUL | find /I "{parent_pid}" >NUL
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >NUL
-    set /a WAIT_COUNT+=1
-    if !WAIT_COUNT! geq 10 (
-        taskkill /F /PID {parent_pid} >nul 2>&1
-    )
-    goto wait_loop
-)
-
-echo Replacing application files in "{target_dir}"...
-timeout /t 1 /nobreak >NUL
-
-robocopy "{extract_dir}" "{target_dir}" /E /NP /R:3 /W:1 >nul
-if errorlevel 8 (
-    echo Robocopy failed with error %errorlevel%!
-    pause
-    exit /b 1
-)
-
-echo Cleaning up update temporary files...
-rd /S /Q "{extract_dir}" >NUL 2>&1
-del /F /Q "{zip_path}" >NUL 2>&1
-
-echo Restarting {APP_NAME}...
-start "" "{current_exe_path}"
-
-(goto) 2>nul & del "%~f0"
-exit
-"""
-        helper_bat.write_text(bat_content, encoding="utf-8")
+        SelfUpdater._write_updater_script(
+            bat_path=helper_bat,
+            pid=parent_pid,
+            source_dir=extract_dir,
+            target_dir=target_dir,
+            target_exe=current_exe_path,
+            zip_path=zip_path,
+        )
 
         # Launch detached helper
         CREATE_NEW_PROCESS_GROUP = 0x00000200

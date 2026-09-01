@@ -133,6 +133,36 @@ class TestInstallerUpgradeArchitecture(unittest.TestCase):
         self.assertIn("Get-CimInstance Win32_Process", uninstall_text)
         self.assertIn("Close GithubSearchDownloader.exe before uninstalling", uninstall_text)
 
+    def test_activate_existing_instance_invoked_safely(self) -> None:
+        import gui_app
+
+        # Should execute cleanly without throwing unhandled exceptions
+        gui_app.activate_existing_instance()
+
+    def test_inno_setup_icons_section_declares_shortcuts_and_uninstaller(self) -> None:
+        iss_content = self.installer_iss.read_text(encoding="utf-8")
+        self.assertIn('Name: "{group}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"', iss_content)
+        self.assertIn('Name: "{group}\\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"', iss_content)
+        self.assertIn('Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"', iss_content)
+
+    def test_install_script_creates_start_menu_uninstaller_and_desktop_shortcuts(self) -> None:
+        install_text = self.install_ps1.read_text(encoding="utf-8")
+        self.assertIn("Uninstall GitHub Search Downloader.lnk", install_text)
+        self.assertIn("uninstaller_shortcut", install_text)
+        self.assertIn("New-AppShortcut", install_text)
+        self.assertIn("powershell.exe", install_text)
+        self.assertIn("uninstall_windows.ps1", install_text)
+
+    def test_uninstaller_script_handles_purge_user_data_and_removes_shortcuts(self) -> None:
+        uninstall_text = self.uninstall_ps1.read_text(encoding="utf-8")
+        self.assertIn("[switch]$PurgeUserData", uninstall_text)
+        self.assertIn("Purging user data and secrets", uninstall_text)
+        self.assertIn("StartMenuDir", uninstall_text)
+        self.assertIn("DesktopShortcut", uninstall_text)
+        self.assertIn("UninstallRegistryKey", uninstall_text)
+        self.assertIn("LOCALAPPDATA", uninstall_text)
+        self.assertIn("APPDATA", uninstall_text)
+
     def test_app_paths_separate_program_binaries_from_user_secrets(self) -> None:
         from github_harvester.secret_store import default_secret_dir
 

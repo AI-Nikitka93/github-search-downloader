@@ -96,43 +96,63 @@ function New-AppShortcut {
     param(
         [string]$ShortcutPath,
         [string]$TargetPath,
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [string]$Arguments = "",
+        [string]$IconPath = "",
+        [string]$Description = "GitHub Search Downloader"
     )
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath = $TargetPath
     $shortcut.WorkingDirectory = $WorkingDirectory
-    $installedIcon = Join-Path $WorkingDirectory "assets\icon.ico"
-    if (Test-Path -LiteralPath $installedIcon) {
-        $shortcut.IconLocation = "$installedIcon,0"
-    } else {
-        $shortcut.IconLocation = "$TargetPath,0"
+    if ($Arguments.Trim()) {
+        $shortcut.Arguments = $Arguments
     }
-    $shortcut.Description = "GitHub Search Downloader"
+    if ($IconPath.Trim()) {
+        $shortcut.IconLocation = $IconPath
+    } else {
+        $installedIcon = Join-Path $WorkingDirectory "assets\icon.ico"
+        if (Test-Path -LiteralPath $installedIcon) {
+            $shortcut.IconLocation = "$installedIcon,0"
+        } else {
+            $shortcut.IconLocation = "$TargetPath,0"
+        }
+    }
+    $shortcut.Description = $Description
     $shortcut.Save()
 }
+
+$InstalledUninstaller = Join-Path $ResolvedInstallDir "uninstall_windows.ps1"
+$installedIconPath = Join-Path $ResolvedInstallDir "assets\icon.ico"
+$displayIcon = if (Test-Path -LiteralPath $installedIconPath) { "$installedIconPath,0" } else { "$TargetExe,0" }
 
 New-AppShortcut `
     -ShortcutPath (Join-Path $StartMenuDir "GitHub Search Downloader.lnk") `
     -TargetPath $TargetExe `
-    -WorkingDirectory $ResolvedInstallDir
+    -WorkingDirectory $ResolvedInstallDir `
+    -Description "GitHub Search Downloader"
+
+New-AppShortcut `
+    -ShortcutPath (Join-Path $StartMenuDir "Uninstall GitHub Search Downloader.lnk") `
+    -TargetPath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+    -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$InstalledUninstaller`" -InstallDir `"$ResolvedInstallDir`"" `
+    -WorkingDirectory $ResolvedInstallDir `
+    -IconPath $displayIcon `
+    -Description "Uninstall GitHub Search Downloader"
 
 if ($DesktopShortcut) {
     New-AppShortcut `
         -ShortcutPath (Join-Path ([Environment]::GetFolderPath("Desktop")) "GitHub Search Downloader.lnk") `
         -TargetPath $TargetExe `
-        -WorkingDirectory $ResolvedInstallDir
+        -WorkingDirectory $ResolvedInstallDir `
+        -Description "GitHub Search Downloader"
 }
 
 $InstalledSizeBytes = (Get-ChildItem -LiteralPath $ResolvedInstallDir -Recurse -File -ErrorAction SilentlyContinue |
     Measure-Object -Property Length -Sum).Sum
 $EstimatedSizeKb = [int][Math]::Ceiling(($InstalledSizeBytes -as [double]) / 1KB)
-$InstalledUninstaller = Join-Path $ResolvedInstallDir "uninstall_windows.ps1"
 $UninstallString = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$InstalledUninstaller`" -InstallDir `"$ResolvedInstallDir`""
 $QuietUninstallString = "$UninstallString -KeepUserData"
-
-$installedIconPath = Join-Path $ResolvedInstallDir "assets\icon.ico"
-$displayIcon = if (Test-Path -LiteralPath $installedIconPath) { "$installedIconPath,0" } else { "$TargetExe,0" }
 
 New-Item -Path $UninstallRegistryKey -Force | Out-Null
 Set-ItemProperty -Path $UninstallRegistryKey -Name "DisplayName" -Value $DisplayName
@@ -153,6 +173,7 @@ $InstallManifest = [ordered]@{
     install_dir = $ResolvedInstallDir
     executable = $TargetExe
     start_menu_shortcut = (Join-Path $StartMenuDir "GitHub Search Downloader.lnk")
+    uninstaller_shortcut = (Join-Path $StartMenuDir "Uninstall GitHub Search Downloader.lnk")
     desktop_shortcut = if ($DesktopShortcut) { (Join-Path ([Environment]::GetFolderPath("Desktop")) "GitHub Search Downloader.lnk") } else { "" }
     uninstall_registry_key = $UninstallRegistrySubkey
 }
@@ -160,6 +181,7 @@ $InstallManifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path
 
 Write-Host "Installed GitHub Search Downloader to: $ResolvedInstallDir"
 Write-Host "Start Menu shortcut: $(Join-Path $StartMenuDir 'GitHub Search Downloader.lnk')"
+Write-Host "Uninstaller shortcut: $(Join-Path $StartMenuDir 'Uninstall GitHub Search Downloader.lnk')"
 Write-Host "Uninstall registry key: $UninstallRegistrySubkey"
 
 if ($Launch) {

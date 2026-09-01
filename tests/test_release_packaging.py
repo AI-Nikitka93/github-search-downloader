@@ -530,6 +530,8 @@ class TestReleasePackaging(unittest.TestCase):
             "uninstall_registry_key",
             "update_channel.json",
             "LICENSE.txt",
+            "Uninstall GitHub Search Downloader.lnk",
+            "uninstaller_shortcut",
         ):
             self.assertIn(expected, script)
 
@@ -540,6 +542,7 @@ class TestReleasePackaging(unittest.TestCase):
             "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\GithubSearchDownloader",
             "Remove-Item",
             "uninstall registry",
+            "PurgeUserData",
         ):
             self.assertIn(expected, script)
 

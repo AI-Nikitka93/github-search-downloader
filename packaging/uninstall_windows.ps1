@@ -1,5 +1,6 @@
 param(
     [string]$InstallDir = "",
+    [switch]$PurgeUserData,
     [switch]$KeepUserData
 )
 
@@ -62,20 +63,15 @@ if ($running) {
     throw "Close GithubSearchDownloader.exe before uninstalling. PID(s): $processIds"
 }
 
-$StartMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GithubSearchDownloader\GitHub Search Downloader.lnk"
-$StartMenuDir = Split-Path -Parent $StartMenuShortcut
+$StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GithubSearchDownloader"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "GitHub Search Downloader.lnk"
 
-foreach ($shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
-    if (Test-Path -LiteralPath $shortcut) {
-        Remove-Item -LiteralPath $shortcut -Force
-    }
+if (Test-Path -LiteralPath $DesktopShortcut) {
+    Remove-Item -LiteralPath $DesktopShortcut -Force -ErrorAction SilentlyContinue
 }
+
 if (Test-Path -LiteralPath $StartMenuDir) {
-    $remaining = Get-ChildItem -LiteralPath $StartMenuDir -Force -ErrorAction SilentlyContinue
-    if (-not $remaining) {
-        Remove-Item -LiteralPath $StartMenuDir -Force
-    }
+    Remove-Item -LiteralPath $StartMenuDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if (Test-Path -LiteralPath $UninstallRegistryKey) {
@@ -98,10 +94,17 @@ if (Test-Path -LiteralPath $ResolvedInstallDir) {
     Remove-Item -LiteralPath $ResolvedInstallDir -Recurse -Force
 }
 
-if (-not $KeepUserData) {
+if ($PurgeUserData -or ($PSBoundParameters.ContainsKey("KeepUserData") -and -not $KeepUserData)) {
+    Write-Host "Purging user data and secrets..."
+    $LocalAppDataDir = Join-Path $env:LOCALAPPDATA "GithubSearchDownloader"
+    if (Test-Path -LiteralPath $LocalAppDataDir) {
+        Remove-Item -LiteralPath $LocalAppDataDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed LocalAppData user directory: $LocalAppDataDir"
+    }
     $AppDataDir = Join-Path $env:APPDATA "GithubSearchDownloader"
     if (Test-Path -LiteralPath $AppDataDir) {
-        Remove-Item -LiteralPath $AppDataDir -Recurse -Force
+        Remove-Item -LiteralPath $AppDataDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed AppData user directory: $AppDataDir"
     }
 }
 

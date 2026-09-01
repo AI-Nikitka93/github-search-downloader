@@ -4044,11 +4044,38 @@ def activate_existing_instance() -> None:
     if os.name != "nt":
         return
     try:
+        from ctypes import wintypes
+
         user32 = ctypes.windll.user32
         SW_RESTORE = 9
-        hwnd = user32.FindWindowW(None, APP_DISPLAY_NAME)
+
+        # 1. Exact match with versioned title or display name
+        hwnd = user32.FindWindowW(None, f"{APP_DISPLAY_NAME} v{__version__}")
+        if not hwnd:
+            hwnd = user32.FindWindowW(None, APP_DISPLAY_NAME)
         if not hwnd:
             hwnd = user32.FindWindowW(None, "GitHub Search Downloader")
+
+        # 2. Window enumeration fallback if exact match not found
+        if not hwnd:
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            candidate_hwnds: list[int] = []
+
+            def _enum_proc(h: int, _: int) -> bool:
+                if user32.IsWindowVisible(h):
+                    length = user32.GetWindowTextLengthW(h)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(h, buff, length + 1)
+                        title = buff.value
+                        if APP_DISPLAY_NAME in title or "GitHub Search" in title:
+                            candidate_hwnds.append(h)
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_enum_proc), 0)
+            if candidate_hwnds:
+                hwnd = candidate_hwnds[0]
+
         if hwnd:
             user32.ShowWindow(hwnd, SW_RESTORE)
             user32.SetForegroundWindow(hwnd)
