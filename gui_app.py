@@ -50,7 +50,18 @@ except ImportError:
     PIL_AVAILABLE = False
 
 
+def set_windows_app_user_model_id() -> None:
+    """Explicitly registers AppUserModelID with Windows Shell so taskbar displays app's custom icon."""
+    if os.name == "nt":
+        try:
+            app_id = f"AI_Nikitka93.GithubSearchDownloader.App.{__version__}"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            pass
+
+
 def enable_high_dpi_awareness() -> None:
+    set_windows_app_user_model_id()
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
@@ -1353,22 +1364,30 @@ class GitHubSearchGUI:
 
         apply_windows11_modern_chrome(self.root.winfo_id(), dark=(sv_ttk.get_theme() == "dark"))
 
-        self._icon_image: PhotoImage | None = None
+        self._icon_images: list = []
         icon_ico = ROOT_DIR / "assets" / "icon.ico"
         icon_png = ROOT_DIR / "assets" / "icon.png"
+        icon_1024 = ROOT_DIR / "assets" / "icon_1024.png"
         if icon_ico.exists():
             try:
-                self.root.iconbitmap(str(icon_ico))
+                self.root.iconbitmap(default=str(icon_ico))
             except Exception:
-                pass
-        if icon_png.exists():
+                try:
+                    self.root.iconbitmap(str(icon_ico))
+                except Exception:
+                    pass
+        target_png = icon_1024 if icon_1024.exists() else icon_png
+        if target_png.exists():
             try:
                 if PIL_AVAILABLE:
-                    pil_icon = Image.open(icon_png).convert("RGBA")
-                    self._icon_image = ImageTk.PhotoImage(pil_icon)
-                    self.root.iconphoto(True, self._icon_image)
+                    pil_img = Image.open(target_png).convert("RGBA")
+                    self._icon_images = [
+                        ImageTk.PhotoImage(pil_img.resize((s, s), Image.Resampling.LANCZOS), master=self.root)
+                        for s in (16, 24, 32, 48, 64, 128, 256)
+                    ]
+                    self.root.iconphoto(True, *self._icon_images)
                 else:
-                    self._icon_image = PhotoImage(file=str(icon_png))
+                    self._icon_image = PhotoImage(file=str(target_png), master=self.root)
                     self.root.iconphoto(True, self._icon_image)
             except Exception:
                 pass
