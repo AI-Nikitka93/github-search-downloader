@@ -198,16 +198,24 @@ def parse_ollama_tags_payload(payload: dict) -> list[str]:
     return result
 
 
-def parse_openai_models_payload(payload: dict) -> list[str]:
-    models = payload.get("data")
-    if not isinstance(models, list):
+def parse_openai_models_payload(payload: dict | list) -> list[str]:
+    raw_models = []
+    if isinstance(payload, list):
+        raw_models = payload
+    elif isinstance(payload, dict):
+        raw_models = payload.get("data") or payload.get("models") or payload.get("result") or []
+
+    if not isinstance(raw_models, list):
         return []
     result: list[str] = []
     seen: set[str] = set()
-    for item in models:
-        if not isinstance(item, dict):
+    for item in raw_models:
+        if isinstance(item, str):
+            model_id = item.strip()
+        elif isinstance(item, dict):
+            model_id = str(item.get("id") or item.get("name") or "").strip()
+        else:
             continue
-        model_id = str(item.get("id") or "").strip()
         if not model_id:
             continue
         lowered = model_id.lower()
@@ -215,7 +223,9 @@ def parse_openai_models_payload(payload: dict) -> list[str]:
             continue
         seen.add(lowered)
         result.append(model_id)
-    result.sort(key=lambda value: value.lower())
+
+    # Free models (:free) at the top, then alphabetically
+    result.sort(key=lambda value: (0 if ":free" in value.lower() else 1, value.lower()))
     return result
 
 

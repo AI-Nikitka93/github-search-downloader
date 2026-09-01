@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.1.2] — 2026-09-01
+
+### 🚀 Added & Enhanced
+- **Universal Multi-Provider AI Engine**:
+  - Full support for **OpenRouter**, **Groq**, **NVIDIA NIM**, **Mistral AI**, **LLM7.io**, **DeepSeek**, **Cloudflare Workers AI**, **Ollama Cloud/Local**, and **OpenAI**.
+  - **Intelligent Key Auto-Detection**: Automatically identifies provider and Base URL when pasting keys (`sk-or-v1-` -> OpenRouter, `gsk_` -> Groq, `nvapi-` -> NVIDIA NIM, `cfut_` -> Cloudflare, `sk-` -> DeepSeek/OpenAI, 32-char hex -> Mistral AI).
+  - **Live Asynchronous Model Discovery**: Dynamically queries `/v1/models` and provider APIs without blocking the GUI.
+  - **Free Models Highlighting & Filtering**: Automatically tags and sorts `:free` and 0-cost models (`[FREE] meta-llama/llama-3.3-70b-instruct:free`, `[FREE] deepseek/deepseek-r1:free`, `[FREE] qwen/qwen-2.5-72b-instruct:free`) with a 1-click filter checkbox.
+  - **Smart Error Diagnostics**: Informative status badges explaining exact failure causes (e.g. 401 Unauthorized, 403 Forbidden with VPN tips for Groq, 429 Rate Limits, Connection Refused).
+  - Integrated into both **First-Run Onboarding Wizard (Step 3)** and **Main AI Settings Tab**.
+
+---
+
 ## [1.1.1] — 2026-09-01
 
 ### 🛠 Fixed & Hardened

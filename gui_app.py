@@ -66,6 +66,13 @@ from github_harvester.ai_planner import (
     discover_local_models,
     plan_search_task,
 )
+from github_harvester.ai_providers import (
+    PROVIDERS,
+    ModelInfo,
+    ValidationResult,
+    detect_provider_from_key,
+    validate_and_fetch_models,
+)
 from github_harvester.secret_store import (
     DEFAULT_SECRET_NAME,
     SecretStoreError,
@@ -165,49 +172,16 @@ SEARCH_PROFILES: dict[str, dict[str, str]] = {
     },
 }
 AI_PROVIDER_PROFILES: dict[str, dict[str, str]] = {
-    "DeepSeek": {
+    "OpenRouter (Бесплатные)": {
         "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
-        "endpoint": "https://api.deepseek.com",
-        "model": "deepseek-chat",
-        "api_key_env": "DEEPSEEK_API_KEY",
-        "timeout": "60",
+        "endpoint": "https://openrouter.ai/api/v1",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "api_key_env": "OPENROUTER_API_KEY",
+        "timeout": "90",
         "temperature": "0",
         "num_ctx": "8192",
         "num_predict": "1024",
-        "get_key_url": "https://platform.deepseek.com/api_keys",
-    },
-    "Google Gemini": {
-        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "model": "gemini-3.5-flash",
-        "api_key_env": "GEMINI_API_KEY",
-        "timeout": "60",
-        "temperature": "0",
-        "num_ctx": "8192",
-        "num_predict": "1024",
-        "get_key_url": "https://aistudio.google.com/app/apikey",
-    },
-    "xAI (Grok)": {
-        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
-        "endpoint": "https://api.x.ai/v1",
-        "model": "grok-4.5",
-        "api_key_env": "XAI_API_KEY",
-        "timeout": "60",
-        "temperature": "0",
-        "num_ctx": "8192",
-        "num_predict": "1024",
-        "get_key_url": "https://console.x.ai/",
-    },
-    "Groq": {
-        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
-        "endpoint": "https://api.groq.com/openai/v1",
-        "model": "llama-4-70b-versatile",
-        "api_key_env": "GROQ_API_KEY",
-        "timeout": "30",
-        "temperature": "0",
-        "num_ctx": "8192",
-        "num_predict": "1024",
-        "get_key_url": "https://console.groq.com/keys",
+        "get_key_url": "https://openrouter.ai/settings/keys",
     },
     "OpenRouter (Платные)": {
         "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
@@ -220,16 +194,82 @@ AI_PROVIDER_PROFILES: dict[str, dict[str, str]] = {
         "num_predict": "1024",
         "get_key_url": "https://openrouter.ai/settings/keys",
     },
-    "OpenRouter (Бесплатные)": {
+    "Groq": {
         "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
-        "endpoint": "https://openrouter.ai/api/v1",
-        "model": "google/gemma-4-31b-it:free",
-        "api_key_env": "OPENROUTER_API_KEY",
-        "timeout": "90",
+        "endpoint": "https://api.groq.com/openai/v1",
+        "model": "llama-3.3-70b-versatile",
+        "api_key_env": "GROQ_API_KEY",
+        "timeout": "30",
         "temperature": "0",
         "num_ctx": "8192",
         "num_predict": "1024",
-        "get_key_url": "https://openrouter.ai/settings/keys",
+        "get_key_url": "https://console.groq.com/keys",
+    },
+    "NVIDIA NIM": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://integrate.api.nvidia.com/v1",
+        "model": "meta/llama-3.3-70b-instruct",
+        "api_key_env": "NVIDIA_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://build.nvidia.com/",
+    },
+    "DeepSeek": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://platform.deepseek.com/api_keys",
+    },
+    "Mistral AI": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://api.mistral.ai/v1",
+        "model": "codestral-latest",
+        "api_key_env": "MISTRAL_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://console.mistral.ai/api-keys",
+    },
+    "LLM7.io": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://api.llm7.io/v1",
+        "model": "deepseek-v4-flash",
+        "api_key_env": "LLM7_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://token.llm7.io/#/api-keys",
+    },
+    "Google Gemini": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": "gemini-2.0-flash",
+        "api_key_env": "GEMINI_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://aistudio.google.com/app/apikey",
+    },
+    "Cloudflare Workers AI": {
+        "provider_type": AI_PROVIDER_OPENAI_COMPATIBLE,
+        "endpoint": "https://api.cloudflare.com/client/v4",
+        "model": "@cf/meta/llama-3.3-70b-instruct",
+        "api_key_env": "CLOUDFLARE_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://dash.cloudflare.com/",
     },
     "Ollama (Локально)": {
         "provider_type": AI_PROVIDER_OLLAMA,
@@ -241,6 +281,17 @@ AI_PROVIDER_PROFILES: dict[str, dict[str, str]] = {
         "num_ctx": "8192",
         "num_predict": "1024",
         "get_key_url": "",
+    },
+    "Ollama Cloud": {
+        "provider_type": AI_PROVIDER_OLLAMA,
+        "endpoint": "https://ollama.com/api",
+        "model": "llama3.3",
+        "api_key_env": "OLLAMA_API_KEY",
+        "timeout": "60",
+        "temperature": "0",
+        "num_ctx": "8192",
+        "num_predict": "1024",
+        "get_key_url": "https://ollama.com/settings/keys",
     },
 }
 
@@ -550,8 +601,16 @@ class FirstRunWizard(Toplevel):
         self.ai_mode_var = StringVar(value="local")
         self.ollama_model_var = StringVar(value="")
         self.ollama_status_var = StringVar(value="Поиск Ollama...")
-        self.cloud_provider_var = StringVar(value="DeepSeek")
+
+        self.cloud_provider_id_var = StringVar(value="openrouter")
+        self.cloud_endpoint_var = StringVar(value="https://openrouter.ai/api/v1")
+        self.cloud_account_id_var = StringVar(value="")
         self.cloud_key_var = StringVar(value="")
+        self.cloud_model_var = StringVar(value="")
+        self.cloud_free_only_var = BooleanVar(value=True)
+        self.cloud_status_msg_var = StringVar(value="")
+        self.cloud_all_models: list[ModelInfo] = []
+        self.cloud_testing_in_progress = False
 
         self.selected_preset: dict | None = None
 
@@ -726,45 +785,129 @@ class FirstRunWizard(Toplevel):
         ttk.Label(box, textvariable=self.disk_info_var, font=("Segoe UI", 10)).pack(anchor="w", pady=10)
 
     def _render_step3(self, parent):
-        box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ ", padding=15)
+        box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ-помощника ", padding=15)
         box.pack(fill=BOTH, expand=True)
 
+        # 1. Локальный ИИ (Ollama)
         r1 = ttk.Radiobutton(
             box,
-            text="Локальный ИИ (Ollama) — Рекомендуется (Бесплатно и приватно)",
+            text="Локальный ИИ (Ollama) — Приватно и бесплатно на вашем ПК",
             variable=self.ai_mode_var,
             value="local",
         )
-        r1.pack(anchor="w", pady=(0, 4))
+        r1.pack(anchor="w", pady=(0, 2))
 
-        ollama_frame = ttk.Frame(box, padding=(20, 0, 0, 10))
+        ollama_frame = ttk.Frame(box, padding=(20, 0, 0, 8))
         ollama_frame.pack(fill="x")
-        ttk.Label(ollama_frame, textvariable=self.ollama_status_var).pack(anchor="w")
-        self.combo_ollama = ttk.Combobox(ollama_frame, textvariable=self.ollama_model_var, state="readonly", width=30)
-        self.combo_ollama.pack(side=LEFT, pady=4)
-        ttk.Button(ollama_frame, text="🔄 Обновить", command=self._probe_ai_background).pack(side=LEFT, padx=8)
+        ttk.Label(ollama_frame, textvariable=self.ollama_status_var, foreground="#57606a").pack(anchor="w")
 
+        ollama_row = ttk.Frame(ollama_frame)
+        ollama_row.pack(fill="x", pady=2)
+        ttk.Label(ollama_row, text="Модель:").pack(side=LEFT, padx=(0, 6))
+        self.combo_ollama = ttk.Combobox(ollama_row, textvariable=self.ollama_model_var, state="readonly", width=32)
+        if self.cached_ollama_models:
+            self.combo_ollama["values"] = self.cached_ollama_models
+            if not self.ollama_model_var.get():
+                self.ollama_model_var.set(self.cached_ollama_models[0])
+        self.combo_ollama.pack(side=LEFT)
+        ttk.Button(ollama_row, text="🔄 Обновить Ollama", command=self._probe_ai_background).pack(side=LEFT, padx=8)
+
+        # 2. Облачные ИИ
         r2 = ttk.Radiobutton(
             box,
-            text="Облачные ИИ (DeepSeek, OpenAI, OpenRouter)",
+            text="Облачные ИИ (OpenRouter, Groq, NVIDIA NIM, Mistral AI, LLM7, DeepSeek, OpenAI...)",
             variable=self.ai_mode_var,
             value="cloud",
         )
-        r2.pack(anchor="w", pady=(10, 4))
+        r2.pack(anchor="w", pady=(6, 2))
 
-        cloud_frame = ttk.Frame(box, padding=(20, 0, 0, 10))
-        cloud_frame.pack(fill="x")
-        ttk.Label(cloud_frame, text="API Key:").pack(side=LEFT)
-        ttk.Entry(cloud_frame, textvariable=self.cloud_key_var, show="*", width=30).pack(side=LEFT, padx=8)
-        ttk.Button(cloud_frame, text="⚡ Проверить", command=self._test_cloud_key).pack(side=LEFT)
+        cloud_box = ttk.Frame(box, padding=(20, 0, 0, 4))
+        cloud_box.pack(fill=BOTH, expand=True)
 
+        # Провайдер + Ссылка на получение ключа
+        prov_row = ttk.Frame(cloud_box)
+        prov_row.pack(fill="x", pady=2)
+        ttk.Label(prov_row, text="Провайдер:", width=12).pack(side=LEFT)
+
+        provider_choices = [
+            ("openrouter", "OpenRouter (400+ моделей, есть бесплатные)"),
+            ("groq", "Groq (Сверхбыстрый инференс)"),
+            ("nvidia", "NVIDIA NIM (Build NVIDIA)"),
+            ("deepseek", "DeepSeek (Официальный API)"),
+            ("mistral", "Mistral AI (La Plateforme)"),
+            ("llm7", "LLM7.io (Фронтирные модели 2026)"),
+            ("cloudflare", "Cloudflare Workers AI"),
+            ("ollama_cloud", "Ollama Cloud / Remote"),
+            ("openai", "OpenAI (Official)"),
+            ("custom", "Пользовательский (OpenAI-compatible)"),
+        ]
+        self.prov_id_map = {name: pid for pid, name in provider_choices}
+        self.prov_name_map = {pid: name for pid, name in provider_choices}
+
+        self.combo_provider = ttk.Combobox(
+            prov_row,
+            values=[name for _, name in provider_choices],
+            state="readonly",
+            width=42,
+        )
+        cur_pid = self.cloud_provider_id_var.get()
+        self.combo_provider.set(self.prov_name_map.get(cur_pid, provider_choices[0][1]))
+        self.combo_provider.pack(side=LEFT, padx=(0, 8))
+        self.combo_provider.bind("<<ComboboxSelected>>", self._on_provider_dropdown_changed)
+
+        self.btn_get_key = ttk.Button(prov_row, text="🔑 Где взять ключ?", command=self._open_current_provider_help)
+        self.btn_get_key.pack(side=LEFT)
+
+        # API Key
+        key_row = ttk.Frame(cloud_box)
+        key_row.pack(fill="x", pady=2)
+        ttk.Label(key_row, text="API Key:", width=12).pack(side=LEFT)
+        self.entry_cloud_key = ttk.Entry(key_row, textvariable=self.cloud_key_var, show="*", width=42)
+        self.entry_cloud_key.pack(side=LEFT, padx=(0, 8))
+        self.cloud_key_var.trace_add("write", self._on_key_typed_or_pasted)
+
+        self.btn_check_key = ttk.Button(key_row, text="⚡ Проверить и загрузить модели", command=self._test_cloud_key)
+        self.btn_check_key.pack(side=LEFT)
+
+        # Endpoint (Base URL)
+        self.endpoint_row = ttk.Frame(cloud_box)
+        self.endpoint_row.pack(fill="x", pady=2)
+        ttk.Label(self.endpoint_row, text="Base URL:", width=12).pack(side=LEFT)
+        ttk.Entry(self.endpoint_row, textvariable=self.cloud_endpoint_var, width=54).pack(side=LEFT)
+
+        # Модели + Чекбокс бесплатных
+        models_row = ttk.Frame(cloud_box)
+        models_row.pack(fill="x", pady=2)
+        ttk.Label(models_row, text="Модель:", width=12).pack(side=LEFT)
+        self.combo_cloud_model = ttk.Combobox(models_row, textvariable=self.cloud_model_var, width=42)
+        self.combo_cloud_model.pack(side=LEFT, padx=(0, 8))
+
+        self.chk_free_only = ttk.Checkbutton(
+            models_row,
+            text="🎁 Только бесплатные (:free)",
+            variable=self.cloud_free_only_var,
+            command=self._filter_cloud_models_display,
+        )
+        self.chk_free_only.pack(side=LEFT)
+
+        # Статус валидации
+        self.lbl_cloud_status = ttk.Label(cloud_box, textvariable=self.cloud_status_msg_var, font=("Segoe UI", 9))
+        self.lbl_cloud_status.pack(anchor="w", pady=(2, 0))
+
+        # Инициализируем модели для текущего провайдера по умолчанию
+        spec = PROVIDERS.get(cur_pid)
+        if spec and spec.default_models:
+            self.cloud_all_models = [ModelInfo(id=m, name=m, is_free=":free" in m.lower()) for m in spec.default_models]
+            self._filter_cloud_models_display()
+
+        # 3. Без ИИ
         r3 = ttk.Radiobutton(
             box,
             text="Без ИИ (Только прямой поиск по фильтрам)",
             variable=self.ai_mode_var,
             value="none",
         )
-        r3.pack(anchor="w", pady=(10, 0))
+        r3.pack(anchor="w", pady=(8, 0))
 
     def _render_step4(self, parent):
         box = ttk.LabelFrame(parent, text=" ✨ Готовые быстрые шаблоны ", padding=15)
@@ -928,19 +1071,121 @@ class FirstRunWizard(Toplevel):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _test_cloud_key(self):
+    def _on_provider_dropdown_changed(self, event=None):
+        selected_name = self.combo_provider.get()
+        pid = self.prov_id_map.get(selected_name, "custom")
+        self.cloud_provider_id_var.set(pid)
+        spec = PROVIDERS.get(pid)
+        if spec:
+            self.cloud_endpoint_var.set(spec.default_base_url)
+            if spec.default_models:
+                self.cloud_all_models = [
+                    ModelInfo(id=m, name=m, is_free=":free" in m.lower())
+                    for m in spec.default_models
+                ]
+                self._filter_cloud_models_display()
+        self.cloud_status_msg_var.set(f"Выбран провайдер: {spec.display_name if spec else pid}")
+
+    def _open_current_provider_help(self):
+        pid = self.cloud_provider_id_var.get()
+        spec = PROVIDERS.get(pid)
+        if spec and spec.help_url:
+            webbrowser.open(spec.help_url)
+        else:
+            webbrowser.open("https://openrouter.ai/keys")
+
+    def _on_key_typed_or_pasted(self, *args):
         key = self.cloud_key_var.get().strip()
-        provider = self.cloud_provider_var.get().strip()
         if not key:
-            messagebox.showwarning("API Key", "Введите API-ключ для сохранения.", parent=self)
             return
-        endpoint = "https://api.deepseek.com/v1" if provider == "DeepSeek" else "https://api.openai.com/v1"
-        secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, endpoint)
-        try:
-            store_secret(secret_name, key)
-            messagebox.showinfo("Проверка ключа", f"Ключ для {provider} успешно сохранен в защищенное хранилище Windows DPAPI!", parent=self)
-        except Exception as exc:
-            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить ключ в DPAPI: {exc}", parent=self)
+        detected_pid = detect_provider_from_key(key)
+        if detected_pid and detected_pid != self.cloud_provider_id_var.get():
+            self.cloud_provider_id_var.set(detected_pid)
+            if detected_pid in self.prov_name_map and hasattr(self, "combo_provider"):
+                self.combo_provider.set(self.prov_name_map[detected_pid])
+            spec = PROVIDERS.get(detected_pid)
+            if spec:
+                self.cloud_endpoint_var.set(spec.default_base_url)
+                if spec.default_models:
+                    self.cloud_all_models = [
+                        ModelInfo(id=m, name=m, is_free=":free" in m.lower())
+                        for m in spec.default_models
+                    ]
+                    self._filter_cloud_models_display()
+            self.cloud_status_msg_var.set(f"🔍 Автоматически определен: {spec.display_name if spec else detected_pid}")
+
+    def _filter_cloud_models_display(self):
+        if not hasattr(self, "combo_cloud_model"):
+            return
+        free_only = self.cloud_free_only_var.get()
+        if free_only:
+            display_list = [m.id for m in self.cloud_all_models if m.is_free]
+            if not display_list:
+                display_list = [m.id for m in self.cloud_all_models]
+        else:
+            display_list = [m.id for m in self.cloud_all_models]
+
+        self.combo_cloud_model["values"] = display_list
+        if display_list:
+            cur = self.cloud_model_var.get()
+            if not cur or cur not in display_list:
+                self.cloud_model_var.set(display_list[0])
+
+    def _test_cloud_key(self):
+        if self.cloud_testing_in_progress:
+            return
+        key = self.cloud_key_var.get().strip()
+        provider_id = self.cloud_provider_id_var.get()
+        endpoint = self.cloud_endpoint_var.get().strip()
+
+        if not key and provider_id not in ("ollama", "custom"):
+            messagebox.showwarning("API Key", "Введите API-ключ для проверки.", parent=self)
+            return
+
+        self.cloud_testing_in_progress = True
+        self.cloud_status_msg_var.set("⏳ Проверка API-ключа и загрузка списка моделей...")
+        if hasattr(self, "btn_check_key"):
+            self.btn_check_key.configure(state="disabled")
+
+        def _worker():
+            res = validate_and_fetch_models(
+                provider_id=provider_id,
+                api_key=key,
+                base_url=endpoint,
+                account_id=self.cloud_account_id_var.get().strip(),
+                timeout=10,
+            )
+
+            def _update():
+                self.cloud_testing_in_progress = False
+                if hasattr(self, "btn_check_key"):
+                    self.btn_check_key.configure(state="normal")
+                if res.success:
+                    self.cloud_all_models = res.models
+                    self._filter_cloud_models_display()
+
+                    secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, res.endpoint)
+                    try:
+                        store_secret(secret_name, key)
+                    except Exception:
+                        pass
+
+                    free_cnt = len(res.free_models)
+                    free_str = f" ({free_cnt} бесплатных)" if free_cnt > 0 else ""
+                    self.cloud_status_msg_var.set(f"✅ Ключ валиден! Загружено {len(res.models)} моделей{free_str}")
+                    if hasattr(self, "lbl_cloud_status"):
+                        self.lbl_cloud_status.configure(foreground="#1a7f37")
+                else:
+                    self.cloud_status_msg_var.set(f"❌ {res.error_message}")
+                    if hasattr(self, "lbl_cloud_status"):
+                        self.lbl_cloud_status.configure(foreground="#cf222e")
+                    if res.models:
+                        self.cloud_all_models = res.models
+                        self._filter_cloud_models_display()
+
+            self.after(0, _update)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _select_preset(self, query: str, task: str):
         self.selected_preset = {"query": query, "ai_task": task}
@@ -963,8 +1208,10 @@ class FirstRunWizard(Toplevel):
                     "workspace": self.workspace_var.get(),
                     "ai_mode": self.ai_mode_var.get(),
                     "ollama_model": self.ollama_model_var.get(),
-                    "cloud_provider": self.cloud_provider_var.get(),
+                    "cloud_provider_id": self.cloud_provider_id_var.get(),
+                    "cloud_endpoint": self.cloud_endpoint_var.get(),
                     "cloud_key": self.cloud_key_var.get().strip(),
+                    "cloud_model": self.cloud_model_var.get().strip(),
                     "preset": self.selected_preset,
                 }
             )
@@ -1155,16 +1402,14 @@ class GitHubSearchGUI:
                     self.ai_model_var.set(data["ollama_model"])
             elif ai_mode == "cloud":
                 self.ai_provider_type_var.set(AI_PROVIDER_OPENAI_COMPATIBLE)
-                provider = data.get("cloud_provider", "DeepSeek")
-                if provider == "DeepSeek":
-                    self.ai_endpoint_var.set("https://api.deepseek.com/v1")
-                    self.ai_model_var.set("deepseek-chat")
-                else:
-                    self.ai_endpoint_var.set("https://api.openai.com/v1")
-                    self.ai_model_var.set("gpt-4o-mini")
+                endpoint = data.get("cloud_endpoint") or "https://openrouter.ai/api/v1"
+                self.ai_endpoint_var.set(endpoint)
+                if data.get("cloud_model"):
+                    self.ai_model_var.set(data["cloud_model"])
                 cloud_key = data.get("cloud_key", "")
                 if cloud_key:
-                    secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, self.ai_endpoint_var.get())
+                    self.ai_api_key_var.set(cloud_key)
+                    secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, endpoint)
                     try:
                         store_secret(secret_name, cloud_key)
                     except Exception as e:

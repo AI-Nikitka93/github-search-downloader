@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 APP_NAME = "GithubSearchDownloader"
 APP_DISPLAY_NAME = "GitHub Search & Downloader"
 AUTHOR = "Nikita Kizevich"
