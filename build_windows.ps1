@@ -27,8 +27,73 @@ $iconArgs = @()
 if (Test-Path "$Root\assets\icon.ico") {
     $iconArgs += "--icon"
     $iconArgs += "$Root\assets\icon.ico"
-    $iconArgs += "--add-data"
-    $iconArgs += "$Root\assets;assets"
+}
+
+# Explicit runtime asset whitelist to prevent bundling raw/unused design sources
+$runtimeAssets = @(
+    "icon.ico",
+    "icon.png",
+    "icon_1024.png",
+    "wizard_step1_hero.png",
+    "hero_storage_vault.png",
+    "hero_ai_providers.png",
+    "hero_search_radar.png",
+    "empty_state_search.png",
+    "chip_ai_24.png",
+    "chip_fastapi_24.png",
+    "chip_osint_24.png",
+    "chip_python_24.png",
+    "chip_rust_24.png",
+    "chip_stars_24.png"
+)
+$dataArgs = @()
+foreach ($asset in $runtimeAssets) {
+    $assetPath = Join-Path "$Root\assets" $asset
+    if (Test-Path $assetPath) {
+        $dataArgs += "--add-data"
+        $dataArgs += "$assetPath;assets"
+    }
+}
+
+# Standard exclusion matrix for bloated/unused transitive modules
+$excludeModules = @(
+    "numpy",
+    "numpy._core",
+    "numpy.linalg",
+    "numpy.fft",
+    "numpy.random",
+    "numpy.testing",
+    "numpy.f2py",
+    "yaml",
+    "psutil",
+    "charset_normalizer",
+    "PIL._avif",
+    "PIL.AvifImagePlugin",
+    "unittest",
+    "unittest.mock",
+    "doctest",
+    "test",
+    "pydoc",
+    "pydoc_data",
+    "xmlrpc",
+    "defusedxml",
+    "multiprocessing",
+    "distutils",
+    "setuptools",
+    "pip",
+    "turtle",
+    "turtledemo",
+    "idlelib",
+    "curses",
+    "pdb",
+    "cProfile",
+    "profile",
+    "pstats"
+)
+$excludeArgs = @()
+foreach ($mod in $excludeModules) {
+    $excludeArgs += "--exclude-module"
+    $excludeArgs += $mod
 }
 
 # Generate Windows PE version resource dynamically
@@ -51,12 +116,15 @@ python -m PyInstaller `
     --noconfirm `
     --clean `
     --onefile `
+    --optimize 1 `
     --paths "$Root\src" `
     --collect-all "sv_ttk" `
     --workpath "$PyInstallerBuildRoot" `
     --specpath "$PyInstallerSpecRoot" `
     @modeArgs `
     @iconArgs `
+    @dataArgs `
+    @excludeArgs `
     @versionArgs `
     --name "GithubSearchDownloader" `
     "gui_app.py"

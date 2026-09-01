@@ -10,7 +10,7 @@ A state-of-the-art Windows desktop application and CLI designed for high-speed G
 | File | Description | Size | SHA-256 |
 | :--- | :--- | :--- | :--- |
 | 💿 **[GithubSearchDownloader-v0.0.1-windows-x64-setup.exe](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/GithubSearchDownloader-v0.0.1-windows-x64-setup.exe)** | **Windows Setup Installer** (Start Menu & Desktop shortcuts, in-place upgrade, Add/Remove Programs) | ~14.3 MB | [Verify](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/checksums.sha256) |
-| 📦 **[GithubSearchDownloader-0.0.1-windows-x64.zip](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/GithubSearchDownloader-0.0.1-windows-x64.zip)** | **Portable Standalone Package** (Extract anywhere & run GithubSearchDownloader.exe) | ~13.8 MB | [Verify](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/checksums.sha256) |
+| 📦 **[GithubSearchDownloader-0.0.1-windows-x64.zip](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/GithubSearchDownloader-0.0.1-windows-x64.zip)** | **Portable Standalone Package** (Extract anywhere & run GithubSearchDownloader.exe) | ~17.0 MB | [Verify](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/checksums.sha256) |
 | 🛡️ **[checksums.sha256](https://github.com/AI-Nikitka93/github-search-downloader/releases/download/v0.0.1/checksums.sha256)** | SHA-256 cryptographic verification file | ~200 B | — |
 
 ---

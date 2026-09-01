@@ -158,10 +158,6 @@ Copy-Item -LiteralPath $ExePath -Destination (Join-Path $StageDir "GithubSearchD
 Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination (Join-Path $StageDir "README.md") -Force
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE.txt") -Destination (Join-Path $StageDir "LICENSE.txt") -Force
 Copy-Item -LiteralPath (Join-Path $Root "docs\ARCHITECTURE.md") -Destination (Join-Path $StageDir "ARCHITECTURE.md") -Force
-$AssetsDir = Join-Path $Root "assets"
-if (Test-Path -LiteralPath $AssetsDir) {
-    Copy-Item -LiteralPath $AssetsDir -Destination (Join-Path $StageDir "assets") -Recurse -Force
-}
 foreach ($scriptName in @("install_windows.ps1", "uninstall_windows.ps1", "check_updates_windows.ps1")) {
     $scriptPath = Join-Path $Root "packaging\$scriptName"
     if (-not (Test-Path -LiteralPath $scriptPath)) {
