@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $SourceExe)) {
 }
 $ProductName = "GithubSearchDownloader"
 $DisplayName = "GitHub Search Downloader"
-$ProductVersion = "1.1.2"
+$ProductVersion = "0.0.1"
 $UninstallRegistrySubkey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader"
 $UninstallRegistryKey = "HKCU:\$UninstallRegistrySubkey"
 

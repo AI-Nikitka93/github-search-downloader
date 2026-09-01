@@ -18,7 +18,7 @@ from github_harvester.updater import (
     UpdateChecker,
     UpdateDownloader,
 )
-from github_harvester.version import SemVer
+from github_harvester.version import CURRENT_SEMVER, SemVer
 
 
 class TestUpdater(unittest.TestCase):
@@ -76,8 +76,8 @@ class TestUpdater(unittest.TestCase):
             "last_checked_utc": "2026-01-01T00:00:00Z",
             "etag": "etag-xyz",
             "release_data": {
-                "tag_name": "v1.0.0",
-                "name": "Release 1.0.0",
+                "tag_name": f"v{CURRENT_SEMVER}",
+                "name": f"Release {CURRENT_SEMVER}",
                 "published_at": "2026-01-01T00:00:00Z",
                 "html_url": "https://github.com/owner/repo",
                 "body": "No updates",

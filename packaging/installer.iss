@@ -1,7 +1,7 @@
 #define MyAppName "GitHub Search Downloader"
 #define MyAppExeName "GithubSearchDownloader.exe"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.2"
+  #define MyAppVersion "0.0.1"
 #endif
 #define MyAppPublisher "Nikita Kizevich"
 #define MyAppURL "https://github.com/AI-Nikitka93/github-search-downloader"

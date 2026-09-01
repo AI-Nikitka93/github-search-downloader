@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.1.2",
+    [string]$Version = "0.0.1",
     [string]$OutputDir = "",
     [switch]$SkipBuild,
     [switch]$Sign,
