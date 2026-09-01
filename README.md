@@ -212,7 +212,7 @@ python -m pip install .[build]
 Verify release zip package checksums, manifests, and Authenticode signatures:
 
 ```powershell
-.\verify_release_windows.ps1 -Version "1.0.0"
+.\verify_release_windows.ps1 -Version "0.0.1"
 ```
 
 ---

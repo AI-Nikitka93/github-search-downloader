@@ -212,7 +212,7 @@ python -m pip install .[build]
 Проверка контрольных сумм SHA-256, манифестов и подписей Authenticode:
 
 ```powershell
-.\verify_release_windows.ps1 -Version "1.0.0"
+.\verify_release_windows.ps1 -Version "0.0.1"
 ```
 
 ---

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import random
 import time
 import urllib.error
 import urllib.parse
@@ -44,6 +45,40 @@ class GitHubClient:
         self.max_rate_limit_wait = max_rate_limit_wait
         self.log = log or (lambda _: None)
         self.should_cancel = should_cancel or (lambda: False)
+        self._rate_limits: dict[str, dict[str, float]] = {}
+
+    def _get_resource_for_url(self, url: str) -> str:
+        if url.startswith(SEARCH_URL):
+            return "search"
+        if url.startswith(GRAPHQL_URL):
+            return "graphql"
+        return "core"
+
+    def _check_proactive_rate_limit(self, resource: str, cost: int = 1) -> None:
+        limit_info = self._rate_limits.get(resource)
+        if not limit_info:
+            return
+        if limit_info["remaining"] < cost:
+            now = time.time()
+            reset_at = limit_info["reset"]
+            if reset_at > now:
+                wait_seconds = reset_at - now + random.uniform(1, 3)
+                if wait_seconds > self.max_rate_limit_wait:
+                    raise GitHubApiError(f"Proactive rate limit wait ({wait_seconds:.1f}s) exceeds max.")
+                self.log(f"Proactive rate limit wait for {resource}: {wait_seconds:.1f} сек...")
+                waited = 0.0
+                while waited < wait_seconds:
+                    if self.should_cancel():
+                        raise GitHubCancelledError("Поиск отменен пользователем.")
+                    time.sleep(1)
+                    waited += 1
+
+    def _update_rate_limit(self, headers: dict[str, str], resource: str) -> None:
+        returned_resource = headers.get("X-RateLimit-Resource", resource)
+        remaining = _parse_positive_int(headers.get("X-RateLimit-Remaining"))
+        reset = _parse_positive_int(headers.get("X-RateLimit-Reset"))
+        if remaining is not None and reset is not None:
+            self._rate_limits[returned_resource] = {"remaining": float(remaining), "reset": float(reset)}
 
     def search_page(self, query: str, sort: str, order: str, page: int, per_page: int) -> dict:
         params = {
@@ -112,6 +147,8 @@ class GitHubClient:
         params = params or {}
         encoded = urllib.parse.urlencode(params)
         full_url = f"{url}?{encoded}" if encoded else url
+        resource = self._get_resource_for_url(url)
+        self._check_proactive_rate_limit(resource)
         headers = {
             "Accept": "application/vnd.github+json",
             "User-Agent": "github-harvester/1.0",
@@ -124,9 +161,11 @@ class GitHubClient:
             request = urllib.request.Request(full_url, headers=headers)
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    self._update_rate_limit(response.headers, resource)
                     payload = response.read().decode("utf-8")
                     return json.loads(payload)
             except urllib.error.HTTPError as exc:
+                self._update_rate_limit(exc.headers, resource)
                 error_body = exc.read().decode("utf-8", errors="replace")
                 error_message = _extract_api_message(error_body)
                 if _is_rate_limit_error(exc.code, error_message):
@@ -152,6 +191,8 @@ class GitHubClient:
         raise GitHubApiError("GitHub API не ответил после повторных попыток")
 
     def _request_graphql_json(self, payload: dict[str, object]) -> dict:
+        resource = "graphql"
+        self._check_proactive_rate_limit(resource)
         headers = {
             "Accept": "application/vnd.github+json",
             "Content-Type": "application/json",
@@ -164,8 +205,18 @@ class GitHubClient:
             request = urllib.request.Request(GRAPHQL_URL, data=body, headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    self._update_rate_limit(response.headers, resource)
                     response_payload = response.read().decode("utf-8")
                     result = json.loads(response_payload)
+                    if isinstance(result, dict) and "data" in result:
+                        rate_limit = result["data"].get("rateLimit")
+                        if isinstance(rate_limit, dict):
+                            remaining = _parse_positive_int(rate_limit.get("remaining"))
+                            cost = _parse_positive_int(rate_limit.get("cost"))
+                            reset_at = _parse_iso_timestamp(rate_limit.get("resetAt"))
+                            if remaining is not None and reset_at is not None:
+                                self._rate_limits[resource] = {"remaining": float(remaining), "reset": reset_at}
+
                     if isinstance(result, dict) and result.get("errors") and not result.get("data"):
                         error_message = _extract_graphql_error_message(result)
                         if _is_rate_limit_error(403, error_message) and attempt <= self.max_retries:
@@ -174,6 +225,7 @@ class GitHubClient:
                         raise GitHubApiError(f"Ошибка GitHub GraphQL API: {error_message}")
                     return result
             except urllib.error.HTTPError as exc:
+                self._update_rate_limit(exc.headers, resource)
                 error_body = exc.read().decode("utf-8", errors="replace")
                 error_message = _extract_api_message(error_body) or _extract_graphql_error_message_from_text(error_body)
                 if _is_rate_limit_error(exc.code, error_message):
@@ -231,19 +283,19 @@ def _rate_limit_wait_seconds(
     headers: dict[str, str],
     now: int | None = None,
     fallback_attempt: int = 1,
-) -> int:
+) -> float:
     current_time = int(time.time()) if now is None else int(now)
     retry_after = _parse_positive_int(headers.get("Retry-After"))
     if retry_after is not None:
-        return retry_after
+        return float(retry_after) + random.uniform(1, 3)
 
     reset_unix = _parse_positive_int(headers.get("X-RateLimit-Reset"))
     remaining = str(headers.get("X-RateLimit-Remaining") or "").strip()
     if reset_unix is not None and remaining == "0":
-        return max(1, reset_unix - current_time + 2)
+        return max(1.0, float(reset_unix - current_time)) + random.uniform(1, 3)
 
     attempt = max(1, int(fallback_attempt or 1))
-    return 60 * (2 ** (attempt - 1))
+    return float(60 * (2 ** (attempt - 1))) + random.uniform(1, 3)
 
 
 def _parse_positive_int(raw_value: object) -> int | None:
@@ -251,7 +303,7 @@ def _parse_positive_int(raw_value: object) -> int | None:
         parsed = int(str(raw_value).strip())
     except (TypeError, ValueError):
         return None
-    if parsed < 1:
+    if parsed < 0:
         return None
     return parsed
 
@@ -411,6 +463,11 @@ def _build_graphql_repository_enrichment_query(count: int) -> str:
     )
     return (
         f"query RepositoryEnrichment({variables}) {{\n"
+        f"  rateLimit {{\n"
+        f"    cost\n"
+        f"    remaining\n"
+        f"    resetAt\n"
+        f"  }}\n"
         f"{aliases}\n"
         "}\n"
         "fragment RepositoryEnrichmentFields on Repository {\n"
@@ -637,7 +694,7 @@ def _is_rate_limit_error(status_code: int, message: str) -> bool:
     if status_code not in (403, 429):
         return False
     lowered = message.lower()
-    return "rate limit" in lowered or "secondary rate limit" in lowered
+    return "rate limit" in lowered or "secondary rate limit" in lowered or "rate_limited" in lowered
 
 
 def deduplicate_repositories(repositories: Iterable[Repo]) -> list[Repo]:

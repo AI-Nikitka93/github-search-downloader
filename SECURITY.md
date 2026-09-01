@@ -4,9 +4,7 @@
 
 | Version | Supported          | Security Maintenance Status |
 | ------- | ------------------ | --------------------------- |
-| 1.1.x   | :white_check_mark: | Active (Current)            |
-| 1.0.x   | :white_check_mark: | Security patches only       |
-| < 1.0.0 | :x:                | End of Life (Unsupported)   |
+| 0.0.x   | :white_check_mark: | Active (Current Beta)       |
 
 ## Reporting a Vulnerability
 

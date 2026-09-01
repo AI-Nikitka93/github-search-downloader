@@ -6,7 +6,7 @@ Windows-приложение (GUI + CLI) на Python для поиска, фил
 ## Команды верификации
 - Тесты (проверено): `python -m unittest discover -s tests -p "test_*.py"`
 - Сборка Windows .exe: `.\build_windows.ps1`
-- Подготовка release-пакета: `.\release_windows.ps1 -Version "1.0.0"`
+- Подготовка release-пакета: `.\release_windows.ps1 -Version "0.0.1"`
 - Запуск CLI (проверено --dry-run): `python app.py --query "test" --dry-run --max-repos 5`
 - Запуск GUI: `start_gui.bat` или `python gui_app.py`
 

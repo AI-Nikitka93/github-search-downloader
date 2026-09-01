@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import json
 import unittest
+import unittest.mock
 import base64
 from io import BytesIO
 from datetime import date
@@ -342,7 +343,8 @@ class TestGitHubApiHelpers(unittest.TestCase):
         self.assertIn("Validation Failed", message)
         self.assertIn("only logical operators", message)
 
-    def test_rate_limit_wait_prefers_retry_after(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_rate_limit_wait_prefers_retry_after(self, mock_uniform) -> None:
         wait_seconds = _rate_limit_wait_seconds(
             {
                 "Retry-After": "17",
@@ -351,9 +353,10 @@ class TestGitHubApiHelpers(unittest.TestCase):
             },
             now=100,
         )
-        self.assertEqual(wait_seconds, 17)
+        self.assertEqual(wait_seconds, 18.5)
 
-    def test_rate_limit_wait_uses_reset_when_remaining_is_zero(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_rate_limit_wait_uses_reset_when_remaining_is_zero(self, mock_uniform) -> None:
         wait_seconds = _rate_limit_wait_seconds(
             {
                 "X-RateLimit-Remaining": "0",
@@ -361,13 +364,15 @@ class TestGitHubApiHelpers(unittest.TestCase):
             },
             now=100,
         )
-        self.assertEqual(wait_seconds, 27)
+        self.assertEqual(wait_seconds, 26.5)
 
-    def test_rate_limit_wait_falls_back_to_one_minute(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_rate_limit_wait_falls_back_to_one_minute(self, mock_uniform) -> None:
         wait_seconds = _rate_limit_wait_seconds({}, now=100)
-        self.assertEqual(wait_seconds, 60)
+        self.assertEqual(wait_seconds, 61.5)
 
-    def test_rate_limit_wait_ignores_reset_when_remaining_is_not_zero(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_rate_limit_wait_ignores_reset_when_remaining_is_not_zero(self, mock_uniform) -> None:
         wait_seconds = _rate_limit_wait_seconds(
             {
                 "X-RateLimit-Remaining": "12",
@@ -375,13 +380,15 @@ class TestGitHubApiHelpers(unittest.TestCase):
             },
             now=100,
         )
-        self.assertEqual(wait_seconds, 60)
+        self.assertEqual(wait_seconds, 61.5)
 
-    def test_rate_limit_wait_uses_exponential_secondary_fallback(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_rate_limit_wait_uses_exponential_secondary_fallback(self, mock_uniform) -> None:
         wait_seconds = _rate_limit_wait_seconds({}, now=100, fallback_attempt=3)
-        self.assertEqual(wait_seconds, 240)
+        self.assertEqual(wait_seconds, 241.5)
 
-    def test_wait_for_rate_limit_respects_max_wait(self) -> None:
+    @unittest.mock.patch("github_harvester.github_api.random.uniform", return_value=1.5)
+    def test_wait_for_rate_limit_respects_max_wait(self, mock_uniform) -> None:
         client = GitHubClient(max_rate_limit_wait=10)
         with self.assertRaises(GitHubApiError):
             client._wait_for_rate_limit({"Retry-After": "11"})
@@ -407,6 +414,7 @@ class TestGitHubApiHelpers(unittest.TestCase):
         captured_headers = {}
 
         class FakeResponse:
+            headers = {}
             def __enter__(self) -> "FakeResponse":
                 return self
 
@@ -470,6 +478,7 @@ class TestGitHubApiHelpers(unittest.TestCase):
         encoded_readme = base64.b64encode(readme_bytes).decode("ascii")
 
         class FakeResponse:
+            headers = {}
             def __enter__(self) -> "FakeResponse":
                 return self
 
@@ -518,6 +527,7 @@ class TestGitHubApiHelpers(unittest.TestCase):
         captured_url = ""
 
         class FakeResponse:
+            headers = {}
             def __enter__(self) -> "FakeResponse":
                 return self
 
