@@ -3,7 +3,7 @@
 [English](./README.md) | **Русский**
 
 <p align="center">
-  <img src="assets/hero_search_radar.png" alt="GitHub Search Downloader Banner" width="760"/>
+  <img src="assets/hero_search_radar.png" alt="GitHub Search Downloader Logo" width="160"/>
 </p>
 
 <!-- tdm-reservation: 1 -->
