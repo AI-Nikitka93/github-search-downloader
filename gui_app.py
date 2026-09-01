@@ -534,6 +534,8 @@ class FirstRunWizard(Toplevel):
         self.github_user_var = StringVar(value="Не подключен")
         self.github_rate_limit_var = StringVar(value="Лимит: 60 запросов/час")
         self.github_status_msg_var = StringVar(value="")
+        self.oauth_code_var = StringVar(value="")
+        self.verification_uri_var = StringVar(value="https://github.com/login/device")
         self.oauth_in_progress = False
 
         default_workspace = Path.home() / "Downloads" / "GitHubRepositories"
@@ -619,7 +621,7 @@ class FirstRunWizard(Toplevel):
             text="Авторизация увеличивает лимит запросов к API GitHub с 60 до 5 000 в час,\n"
             "что позволяет мгновенно находить и анализировать тысячи проектов.",
             font=("Segoe UI Variable Text", 10),
-        ).pack(anchor="w", pady=(0, 15))
+        ).pack(anchor="w", pady=(0, 12))
 
         btn_row = ttk.Frame(box)
         btn_row.pack(fill="x", pady=5)
@@ -628,16 +630,64 @@ class FirstRunWizard(Toplevel):
             btn_row,
             text="🔑 Войти через GitHub (OAuth 1-Click)",
             command=self._start_oauth_flow,
-        ).pack(side=LEFT, padx=(0, 10))
+        ).pack(side=LEFT, padx=(0, 8))
 
         ttk.Button(
             btn_row,
             text="💻 Импорт из GitHub CLI",
             command=self._import_gh_cli,
+        ).pack(side=LEFT, padx=(0, 8))
+
+        ttk.Button(
+            btn_row,
+            text="✍️ Ввести токен вручную",
+            command=self._manual_token_entry,
         ).pack(side=LEFT)
 
+        # Prominent Code Display Frame
+        self.code_box_frame = ttk.LabelFrame(box, text=" 🔑 Ваш одноразовый код для входа ", padding=12)
+
+        ttk.Label(
+            self.code_box_frame,
+            text="1. Скопируйте этот код и вставьте его на открывшейся странице GitHub:",
+            font=("Segoe UI", 10),
+        ).pack(anchor="w", pady=(0, 6))
+
+        code_row = ttk.Frame(self.code_box_frame)
+        code_row.pack(fill="x", pady=(0, 8))
+
+        code_lbl = ttk.Label(
+            code_row,
+            textvariable=self.oauth_code_var,
+            font=("Consolas", 20, "bold"),
+            foreground="#0969da",
+        )
+        code_lbl.pack(side=LEFT, padx=(0, 15))
+
+        ttk.Button(
+            code_row,
+            text="📋 Скопировать код",
+            command=self._copy_user_code,
+        ).pack(side=LEFT, padx=4)
+
+        ttk.Button(
+            code_row,
+            text="🌐 Открыть страницу GitHub",
+            command=lambda: webbrowser.open(self.verification_uri_var.get()),
+        ).pack(side=LEFT, padx=4)
+
+        ttk.Label(
+            self.code_box_frame,
+            text="2. Нажмите зеленую кнопку 'Continue' на сайте GitHub. Авторизация в программе завершится автоматически.",
+            font=("Segoe UI", 9),
+            foreground="#57606a",
+        ).pack(anchor="w")
+
+        if self.oauth_code_var.get():
+            self.code_box_frame.pack(fill="x", pady=(10, 10))
+
         self.status_card = ttk.Frame(box, relief="groove", padding=10)
-        self.status_card.pack(fill="x", pady=15)
+        self.status_card.pack(fill="x", pady=10)
 
         ttk.Label(self.status_card, textvariable=self.github_user_var, font=("Segoe UI", 10, "bold")).pack(anchor="w")
         ttk.Label(self.status_card, textvariable=self.github_rate_limit_var, foreground="#57606a").pack(anchor="w")
@@ -746,27 +796,20 @@ class FirstRunWizard(Toplevel):
                 auth = GitHubOAuthDeviceFlow()
                 info = auth.request_device_code()
                 user_code = info["user_code"]
-                uri = info["verification_uri"]
+                uri = info.get("verification_uri", "https://github.com/login/device")
 
                 try:
                     subprocess.run(
                         ["clip.exe"],
                         input=user_code,
                         text=True,
-                        check=True,
+                        check=False,
                         creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
                     )
                 except Exception:
                     pass
-                self.clipboard_clear()
-                self.clipboard_append(user_code)
 
-                self.after(
-                    0,
-                    lambda: self.github_status_msg_var.set(
-                        f"Код {user_code} скопирован в буфер! Открываем браузер..."
-                    ),
-                )
+                self.after(0, lambda: self._on_code_received(user_code, uri))
                 webbrowser.open(uri)
 
                 token = auth.poll_for_token(
@@ -783,6 +826,40 @@ class FirstRunWizard(Toplevel):
                 self.oauth_in_progress = False
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_code_received(self, user_code: str, uri: str):
+        self.oauth_code_var.set(user_code)
+        self.verification_uri_var.set(uri)
+        self.clipboard_clear()
+        self.clipboard_append(user_code)
+        if hasattr(self, "code_box_frame"):
+            self.code_box_frame.pack(fill="x", pady=10, before=self.status_card)
+        self.github_status_msg_var.set(f"⏳ Ожидание подтверждения кода {user_code} на сайте GitHub...")
+
+    def _copy_user_code(self):
+        code = self.oauth_code_var.get().strip()
+        if code:
+            self.clipboard_clear()
+            self.clipboard_append(code)
+            try:
+                subprocess.run(
+                    ["clip.exe"],
+                    input=code,
+                    text=True,
+                    check=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                )
+            except Exception:
+                pass
+            self.github_status_msg_var.set(f"📋 Код {code} скопирован в буфер обмена!")
+
+    def _manual_token_entry(self):
+        from tkinter import simpledialog
+        token = simpledialog.askstring("GitHub Token", "Введите ваш Personal Access Token (classic или fine-grained):", parent=self)
+        if token and token.strip():
+            token = token.strip()
+            store_secret(DEFAULT_SECRET_NAME, token)
+            self._fetch_github_user_badge(token)
 
     def _fetch_github_user_badge(self, token: str):
         def _fetch():
@@ -814,6 +891,8 @@ class FirstRunWizard(Toplevel):
         threading.Thread(target=_fetch, daemon=True).start()
 
     def _set_user_success(self, login: str, remaining: int, limit: int):
+        if hasattr(self, "code_box_frame"):
+            self.code_box_frame.pack_forget()
         self.github_user_var.set(f"✅ Авторизован: @{login}")
         self.github_rate_limit_var.set(f"Лимит API: {remaining} / {limit} запросов/час")
         self.github_status_msg_var.set("Авторизация успешно завершена!")

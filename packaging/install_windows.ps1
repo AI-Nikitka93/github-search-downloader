@@ -7,6 +7,12 @@ param(
 $ErrorActionPreference = "Stop"
 $SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceExe = Join-Path $SourceDir "GithubSearchDownloader.exe"
+if (-not (Test-Path -LiteralPath $SourceExe)) {
+    $altExe = Join-Path $SourceDir "..\dist\GithubSearchDownloader.exe"
+    if (Test-Path -LiteralPath $altExe) {
+        $SourceExe = (Resolve-Path -LiteralPath $altExe).Path
+    }
+}
 $ProductName = "GithubSearchDownloader"
 $DisplayName = "GitHub Search Downloader"
 $ProductVersion = "1.1.0"
@@ -14,7 +20,7 @@ $UninstallRegistrySubkey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\
 $UninstallRegistryKey = "HKCU:\$UninstallRegistrySubkey"
 
 if (-not (Test-Path -LiteralPath $SourceExe)) {
-    throw "GithubSearchDownloader.exe was not found next to install_windows.ps1."
+    throw "GithubSearchDownloader.exe was not found. Please run .\build_windows.ps1 first."
 }
 
 if (-not $InstallDir.Trim()) {
