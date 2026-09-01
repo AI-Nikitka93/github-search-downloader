@@ -1466,12 +1466,65 @@ class GitHubSearchGUI:
         help_menu.add_command(label="Документация", command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"))
         help_menu.add_separator()
         help_menu.add_command(label="О программе", command=self._open_about_dialog)
+        help_menu.add_separator()
+        help_menu.add_command(label="🗑️ Удалить программу с ПК...", command=self._uninstall_app)
 
         menubar.add_cascade(label="Справка", menu=help_menu)
         self.root.config(menu=menubar)
 
     def _open_about_dialog(self) -> None:
         AboutDialog(self.root)
+
+    def _uninstall_app(self) -> None:
+        confirm = messagebox.askyesno(
+            "Удаление программы",
+            "Вы действительно хотите удалить GitHub Search Downloader с этого компьютера?",
+            icon="warning",
+            parent=self.root,
+        )
+        if not confirm:
+            return
+
+        app_dir = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).parent
+        inno_uninstaller = app_dir / "unins000.exe"
+        ps_uninstaller = app_dir / "packaging" / "uninstall_windows.ps1"
+        if not ps_uninstaller.exists():
+            ps_uninstaller = (
+                Path(os.environ.get("LOCALAPPDATA", ""))
+                / "Programs"
+                / "GithubSearchDownloader"
+                / "packaging"
+                / "uninstall_windows.ps1"
+            )
+
+        if inno_uninstaller.exists():
+            subprocess.Popen([str(inno_uninstaller)])
+            self.root.destroy()
+        elif ps_uninstaller.exists():
+            subprocess.Popen(
+                [
+                    "cmd.exe",
+                    "/c",
+                    "start",
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(ps_uninstaller),
+                ]
+            )
+            self.root.destroy()
+        else:
+            try:
+                subprocess.Popen(["cmd.exe", "/c", "start", "ms-settings:appsfeatures"])
+            except Exception:
+                pass
+            messagebox.showinfo(
+                "Удаление",
+                "Открыт список установленных программ Windows. Найдите GitHub Search Downloader и выберите 'Удалить'.",
+                parent=self.root,
+            )
 
     def _open_update_dialog(self) -> None:
         UpdateCheckerDialog(self.root)
