@@ -36,7 +36,7 @@ jobs:
           } elseif ($tag -match '^v(?<ver>\d+\.\d+\.\d+.*)$') {
             $version = $Matches['ver']
           } else {
-            $version = "1.1.0"
+            $version = "0.0.1"
           }
           Write-Host "Releasing version: $version"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -97,10 +97,12 @@ jobs:
           $verNotes = "RELEASE_NOTES_v${{ steps.vars.outputs.version }}.md"
           if (Test-Path -LiteralPath $verNotes) {
               Copy-Item -LiteralPath $verNotes -Destination "RELEASE_NOTES.md" -Force
-          } elseif (Test-Path -LiteralPath "RELEASE_NOTES_v1.1.1.md") {
-              Copy-Item -LiteralPath "RELEASE_NOTES_v1.1.1.md" -Destination "RELEASE_NOTES.md" -Force
+          } elseif (Test-Path -LiteralPath "RELEASE_NOTES_v0.0.1.md") {
+              Copy-Item -LiteralPath "RELEASE_NOTES_v0.0.1.md" -Destination "RELEASE_NOTES.md" -Force
+          } elseif (Test-Path -LiteralPath "CHANGELOG.md") {
+              Copy-Item -LiteralPath "CHANGELOG.md" -Destination "RELEASE_NOTES.md" -Force
           } else {
-              Copy-Item -LiteralPath "RELEASE_NOTES_v1.1.0.md" -Destination "RELEASE_NOTES.md" -Force
+              "Release v${{ steps.vars.outputs.version }}" | Out-File -FilePath "RELEASE_NOTES.md" -Encoding UTF8
           }
 
       - name: Create GitHub Release

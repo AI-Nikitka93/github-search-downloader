@@ -2,13 +2,17 @@
 
 [English](./README.md) | **Русский**
 
+<p align="center">
+  <img src="assets/hero_search_radar.png" alt="GitHub Search Downloader Banner" width="760"/>
+</p>
+
 <!-- tdm-reservation: 1 -->
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20%7C%2010%20x64-0078d4.svg)](https://www.microsoft.com/windows)
 [![Security: DPAPI](https://img.shields.io/badge/secrets-Windows%20DPAPI-success.svg)](SECURITY.md)
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE.txt)
 [![W3C TDMRep](https://img.shields.io/badge/TDM-Reserved%20(EU%20AI%20Act)-orange.svg)](.well-known/tdmrep.json)
-[![CI](https://img.shields.io/badge/CI-Passing-brightgreen.svg)](#)
+[![CI](https://github.com/AI-Nikitka93/github-search-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-Nikitka93/github-search-downloader/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-Scorecard%20100%2F100-brightgreen.svg)](SECURITY.md)
 
 Высокопроизводительное десктопное приложение для Windows (GUI + CLI), спроектированное для массового поиска GitHub-репозиториев, шардированного выгруза по датам, ИИ-оценки релевантности и экспорта метаданных в аналитические форматы.
@@ -221,6 +225,9 @@ python -m pip install .[build]
 
 | Документ | Назначение |
 | :--- | :--- |
+| [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | Пошаговое руководство по первому запуску от установки до выгрузки в SQLite. |
+| [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md) | Полный справочник параметров командной строки, флагов и переменных окружения. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Дорожная карта развития проекта, запланированные фичи и релизные вехи. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура компонентов, многопоточность и схема потоков данных. |
 | [`docs/decisions/`](docs/decisions/) | Журнал архитектурных решений (ADR) в стандарте MADR 4.0.0. |
 | [`docs/PROJECT_HISTORY.md`](docs/PROJECT_HISTORY.md) | Хронологический журнал изменений, релизы и история фич. |
@@ -248,3 +255,6 @@ python -m pip install .[build]
 
 <!-- W3C Text and Data Mining Reservation -->
 Права на интеллектуальный анализ текстов и данных (TDM) явно зарезервированы в соответствии со статьей 53 Закона ЕС об ИИ и статьей 4(3) Директивы (ЕС) 2019/790. Автоматический сбор для обучения ИИ-моделей запрещен. Подробности в файле [`.well-known/tdmrep.json`](.well-known/tdmrep.json).
+
+---
+*Architected & Packaged by [AI_Nikitka](https://t.me/Ai_nikitka93)*

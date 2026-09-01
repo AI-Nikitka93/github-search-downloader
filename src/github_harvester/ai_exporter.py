@@ -99,24 +99,29 @@ def export_repo_for_ai(
     ai_export_dir.mkdir(parents=True, exist_ok=True)
 
     export_file = ai_export_dir / f"{safe_name}.xml"
-    repo_map = generate_repo_map(repo_path)
+    tree_text = generate_repo_map(repo_path)
     total_written_bytes = 0
 
+    total_cap_reached = False
     with open(export_file, "w", encoding="utf-8", errors="replace") as out_f:
         out_f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         out_f.write(f'<repository name="{repo_name}">\n')
         out_f.write('  <repo_map>\n')
         out_f.write('    <![CDATA[\n')
-        out_f.write(repo_map + "\n")
+        out_f.write(tree_text + "\n")
         out_f.write('    ]]>\n')
         out_f.write('  </repo_map>\n\n')
         out_f.write('  <files>\n')
 
         for root, dirs, files in os.walk(repo_path):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRECTORIES]
+            dirs.sort()
+            files.sort()
+
             for file in files:
                 if file in IGNORED_DIRECTORIES:
                     continue
+
                 filepath = Path(root) / file
                 if filepath.is_symlink():
                     continue
@@ -145,6 +150,7 @@ def export_repo_for_ai(
 
                     if total_written_bytes + file_size > max_total_size:
                         out_f.write('    <!-- Remaining repository files omitted: total export cap reached -->\n')
+                        total_cap_reached = True
                         break
 
                     content = filepath.read_text(encoding="utf-8", errors="replace")
@@ -155,6 +161,9 @@ def export_repo_for_ai(
                     total_written_bytes += file_size
                 except Exception as e:
                     print(f"Skipping file {filepath}: {e}")
+
+            if total_cap_reached:
+                break
 
         out_f.write('  </files>\n')
         out_f.write('</repository>\n')

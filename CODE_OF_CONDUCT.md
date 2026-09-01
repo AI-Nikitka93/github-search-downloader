@@ -36,9 +36,9 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team at [nikita@kizevich.ru](mailto:nikita@kizevich.ru). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team at [nikitka9318@gmail.com](mailto:nikitka9318@gmail.com). All complaints will be reviewed and investigated promptly and fairly.
 
-For security vulnerabilities or sensitive security disclosures, please refer to [SECURITY.md](SECURITY.md) and report directly to [security@kizevich.ru](mailto:security@kizevich.ru).
+For security vulnerabilities or sensitive security disclosures, please refer to [SECURITY.md](SECURITY.md) and report directly to [nikitka9318@gmail.com](mailto:nikitka9318@gmail.com).
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

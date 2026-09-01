@@ -145,7 +145,11 @@ def clone_repository(
     cancel_event: threading.Event | None = None,
     clone_options: CloneOptions | None = None,
 ) -> CloneResult:
-    owner, repo_name = repository.full_name.split("/", maxsplit=1)
+    if "/" in repository.full_name:
+        owner, repo_name = repository.full_name.split("/", maxsplit=1)
+    else:
+        owner = "unknown"
+        repo_name = repository.full_name or getattr(repository, "name", "unknown") or "unknown"
     safe_owner = sanitize_path_segment(owner)
     safe_repo = sanitize_path_segment(repo_name).lower()
     owner_dir = output_root / safe_owner
@@ -282,8 +286,10 @@ def sanitize_path_segment(raw_segment: str) -> str:
 
 
 def build_repo_folder_name(repository: Repo) -> str:
-    owner, repo_name = repository.full_name.split("/", maxsplit=1)
-    del owner
+    if "/" in repository.full_name:
+        _, repo_name = repository.full_name.split("/", maxsplit=1)
+    else:
+        repo_name = repository.full_name or getattr(repository, "name", "unknown") or "unknown"
     base_repo = normalize_slug(sanitize_path_segment(repo_name))
     summary = build_description_slug(repository.description)
     if summary:

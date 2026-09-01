@@ -1,9 +1,9 @@
 # Global owners
-* @maintainer
+* @AI-Nikitka93
 
 # Core components
-/src/github_harvester/ @maintainer
-/gui_app.py @maintainer
-/app.py @maintainer
-/packaging/ @maintainer
-/docs/ @maintainer
+/src/github_harvester/ @AI-Nikitka93
+/gui_app.py @AI-Nikitka93
+/app.py @AI-Nikitka93
+/packaging/ @AI-Nikitka93
+/docs/ @AI-Nikitka93

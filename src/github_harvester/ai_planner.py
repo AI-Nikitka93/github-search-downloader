@@ -95,14 +95,16 @@ import time
 
 def _try_start_ollama() -> bool:
     try:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        popen_kwargs = {"creationflags": creationflags} if creationflags else {}
         localappdata = os.environ.get("LOCALAPPDATA", "")
         ollama_path = os.path.join(localappdata, "Programs", "Ollama", "ollama.exe")
         if os.path.exists(ollama_path):
-            subprocess.Popen([ollama_path, "serve"], creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.Popen([ollama_path, "serve"], **popen_kwargs)
             time.sleep(2)
             return True
         else:
-            subprocess.Popen(["ollama", "serve"], creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.Popen(["ollama", "serve"], **popen_kwargs)
             time.sleep(2)
             return True
     except Exception as e:
@@ -234,6 +236,7 @@ def plan_search_task(
     provider: AiProviderConfig,
     today: date | None = None,
     log: Callable[[str], None] | None = None,
+    custom_ai_prompt: str = "",
 ) -> AiPlanResult:
     logger = log or (lambda _: None)
     text = task_text.strip()
@@ -245,10 +248,7 @@ def plan_search_task(
         raise ValueError("Не указана модель Ollama.")
 
     current_day = today or date.today()
-    # The planner itself doesn't receive the custom prompt in plan_search_task 
-    # directly via API (it's mainly for the filter), but we pass an empty string here
-    # just to keep the signature intact if someone wants to pass it later.
-    prompt = build_planner_prompt(text, current_day)
+    prompt = build_planner_prompt(text, current_day, custom_ai_prompt=custom_ai_prompt)
     logger(f"AI planner: provider={provider.provider_type}, model={provider.model}")
     raw_response = request_ai(provider, prompt, retries=2)
     payload = parse_json_object(raw_response)
@@ -564,6 +564,53 @@ def parse_json_object(raw_text: str) -> dict:
     except json.JSONDecodeError:
         payload = None
 
+    # 1. Try markdown JSON code blocks (prioritize objects containing expected keys like 'query' or inspect from last to first)
+    code_block_matches = list(re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL))
+    for m in reversed(code_block_matches):
+        try:
+            payload = json.loads(m.group(1))
+            if isinstance(payload, dict):
+                if "query" in payload or len(code_block_matches) == 1:
+                    return payload
+        except json.JSONDecodeError:
+            pass
+
+    for m in reversed(code_block_matches):
+        try:
+            payload = json.loads(m.group(1))
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Extract balanced JSON objects to avoid greedy multi-block collision
+    start_idx = None
+    depth = 0
+    balanced_candidates = []
+    for idx, char in enumerate(raw):
+        if char == "{":
+            if depth == 0:
+                start_idx = idx
+            depth += 1
+        elif char == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start_idx is not None:
+                    candidate = raw[start_idx : idx + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict):
+                            balanced_candidates.append(parsed)
+                    except json.JSONDecodeError:
+                        pass
+
+    for parsed in reversed(balanced_candidates):
+        if "query" in parsed:
+            return parsed
+    if balanced_candidates:
+        return balanced_candidates[-1]
+
+    # 3. Fallback to regex search
     match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
     if not match:
         raise AiPlannerError("AI вернул невалидный JSON.")

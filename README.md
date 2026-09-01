@@ -2,13 +2,17 @@
 
 **English** | [Русский](./README.ru.md)
 
+<p align="center">
+  <img src="assets/hero_search_radar.png" alt="GitHub Search Downloader Banner" width="760"/>
+</p>
+
 <!-- tdm-reservation: 1 -->
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2011%20%7C%2010%20x64-0078d4.svg)](https://www.microsoft.com/windows)
 [![Security: DPAPI](https://img.shields.io/badge/secrets-Windows%20DPAPI-success.svg)](SECURITY.md)
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE.txt)
 [![W3C TDMRep](https://img.shields.io/badge/TDM-Reserved%20(EU%20AI%20Act)-orange.svg)](.well-known/tdmrep.json)
-[![CI](https://img.shields.io/badge/CI-Passing-brightgreen.svg)](#)
+[![CI](https://github.com/AI-Nikitka93/github-search-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-Nikitka93/github-search-downloader/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-Scorecard%20100%2F100-brightgreen.svg)](SECURITY.md)
 
 High-performance Windows desktop application (GUI + CLI) designed for mass GitHub repository discovery, date-sharded harvesting, AI-assisted relevance evaluation, and multi-format metadata analytics.
@@ -221,6 +225,9 @@ Verify release zip package checksums, manifests, and Authenticode signatures:
 
 | Document | Purpose |
 | :--- | :--- |
+| [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | Step-by-step onboarding tutorial from installation to first SQLite export. |
+| [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md) | Exhaustive command-line argument, parameter, and environment variable reference. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Development roadmap, upcoming capabilities, and release milestones. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Component architecture, process concurrency, and data flow specifications. |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records (ADRs) in MADR 4.0.0 format. |
 | [`docs/PROJECT_HISTORY.md`](docs/PROJECT_HISTORY.md) | Chronological development log, releases, and feature milestones. |
@@ -248,3 +255,6 @@ This software and its documentation are proprietary. No permission is granted to
 
 <!-- W3C Text and Data Mining Reservation -->
 Text and Data Mining (TDM) rights are explicitly reserved under Article 53 of the EU AI Act and Directive (EU) 2019/790 Article 4(3). Automated scraping for AI training is strictly prohibited. See [`.well-known/tdmrep.json`](.well-known/tdmrep.json).
+
+---
+*Architected & Packaged by [AI_Nikitka](https://t.me/Ai_nikitka93)*

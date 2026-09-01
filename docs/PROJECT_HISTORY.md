@@ -1,5 +1,17 @@
 # Project History
 
+### 2026-09-02 02:22:00 +03:00 — Core Subsystem Hardening & Edge-Case Defect Remediation
+- Changed: Fixed outer os.walk loop breakout on total export size cap in ai_exporter.py; added safe handling for repositories without slash in downloader.py; enhanced parse_json_object in ai_planner.py with balanced brace and multi-block markdown extraction; purged hardcoded Cloudflare account ID fallback from ai_providers.py; guarded subprocess creationflags for cross-platform Linux/macOS support; wired custom_ai_prompt into plan_search_task; switched CSV export to utf-8-sig encoding for seamless Excel Cyrillic rendering; added unit regression test suite in tests/test_audit_fixes.py.
+- Files: src/github_harvester/ai_exporter.py, src/github_harvester/downloader.py, src/github_harvester/ai_planner.py, src/github_harvester/ai_providers.py, src/github_harvester/exporters.py, tests/test_audit_fixes.py.
+- Verification: python -m unittest discover -s tests -p "test_*.py" (192/192 passed, Exit Code 0), python app.py --query "test" --dry-run --max-repos 5 (Exit Code 0), python scripts/verify_ast_parity.py (100% AST parity, Exit Code 0).
+- Status: DONE.
+
+### 2026-09-02 02:10:00 +03:00 — Packaging, Metadata & Diataxis Documentation Sync
+- Changed: Updated contact/security email to nikitka9318@gmail.com across all security and community files; resolved repository placeholder URLs to AI-Nikitka93/github-search-downloader; updated CODEOWNERS to @AI-Nikitka93; synchronized versioning to 0.0.1 across llms.txt, verify_release_windows.ps1, and release.yml; added hero banner and live CI badge in README.md / README.ru.md; created docs/TUTORIAL.md and docs/CLI_REFERENCE.md; expanded docs/ROADMAP.md with phased milestones; verified 100% AST heading depth parity and added mandatory packaging watermarks.
+- Files: SECURITY.md, CODE_OF_CONDUCT.md, .well-known/tdmrep.json, .github/ISSUE_TEMPLATE/config.yml, .github/SUPPORT.md, CONTRIBUTING.md, .github/CODEOWNERS, llms.txt, verify_release_windows.ps1, .github/workflows/release.yml, README.md, README.ru.md, docs/ROADMAP.md, docs/TUTORIAL.md, docs/CLI_REFERENCE.md.
+- Verification: python -m unittest discover -s tests -p "test_*.py" (187/187 passed, Exit Code 0), python scripts/verify_ast_parity.py (100% AST parity, Exit Code 0).
+- Status: DONE.
+
 ## 2026-02-11
 
 - Initialized project with a working Windows CLI for:

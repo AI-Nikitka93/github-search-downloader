@@ -1,6 +1,6 @@
 param(
     [string]$ReleaseDir = "",
-    [string]$Version = "1.0.0",
+    [string]$Version = "0.0.1",
     [switch]$RequireSignature,
     [switch]$RequireHostedUpdateUrl
 )

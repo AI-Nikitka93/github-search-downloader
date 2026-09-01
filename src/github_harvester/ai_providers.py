@@ -308,7 +308,15 @@ def validate_and_fetch_models(
 
     # Формируем URL запроса моделей
     if provider_id == "cloudflare":
-        acc = account_id.strip() or "0734a6cf03c9ebbecaa83a34d390b477"
+        acc = account_id.strip()
+        if not acc:
+            return ValidationResult(
+                success=False,
+                provider_id=provider_id,
+                provider_name=provider_name,
+                endpoint=base_url,
+                error_message="Для Cloudflare Workers AI требуется указать Account ID.",
+            )
         req_url = f"{base_url}/accounts/{acc}/ai/models/search"
     elif provider_id in ("ollama_cloud", "ollama"):
         req_url = f"{base_url}/tags" if base_url.endswith("/api") else f"{base_url}/api/tags"

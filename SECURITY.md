@@ -11,7 +11,7 @@
 We take the security of GitHub Search Downloader seriously. If you discover a potential vulnerability, **do not open a public issue or discussion**.
 
 ### Reporting Process
-1. Email your findings directly to **security@github-search-downloader.local** (or submit via GitHub Private Vulnerability Reporting on the repository if enabled).
+1. Email your findings directly to **nikitka9318@gmail.com** (or submit via GitHub Private Vulnerability Reporting on the repository if enabled).
 2. Include:
    - Type of vulnerability (e.g., secret leakage, process injection, path traversal).
    - Step-by-step reproduction instructions or proof-of-concept.

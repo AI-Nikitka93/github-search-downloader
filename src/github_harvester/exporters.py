@@ -228,7 +228,7 @@ def export_to_csv(csv_file: Path, repositories: Sequence[Repo]) -> Path:
         "deep_relevance_score", "deep_relevance_error"
     ]
     
-    with open(csv_file, mode="w", newline="", encoding="utf-8") as f:
+    with open(csv_file, mode="w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(headers)
         for repo in repositories:

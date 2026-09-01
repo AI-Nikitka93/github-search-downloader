@@ -13,7 +13,7 @@ Thank you for your interest in contributing to GitHub Search Downloader.
 ### Local Environment
 ```powershell
 # Clone the repository
-git clone https://github.com/example/github-search-downloader.git
+git clone https://github.com/AI-Nikitka93/github-search-downloader.git
 cd github-search-downloader
 
 # Create and activate a virtual environment
