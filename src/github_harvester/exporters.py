@@ -207,6 +207,15 @@ def _ensure_column(
     connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
 
 
+def _sanitize_csv_cell(value: object) -> object:
+    if value is None:
+        return ""
+    text = str(value)
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{text}"
+    return value
+
+
 def export_to_csv(csv_file: Path, repositories: Sequence[Repo]) -> Path:
     csv_file.parent.mkdir(parents=True, exist_ok=True)
     
@@ -224,29 +233,29 @@ def export_to_csv(csv_file: Path, repositories: Sequence[Repo]) -> Path:
         writer.writerow(headers)
         for repo in repositories:
             writer.writerow([
-                repo.id,
-                repo.full_name,
-                repo.clone_url,
-                repo.html_url,
-                repo.description,
+                _sanitize_csv_cell(repo.id),
+                _sanitize_csv_cell(repo.full_name),
+                _sanitize_csv_cell(repo.clone_url),
+                _sanitize_csv_cell(repo.html_url),
+                _sanitize_csv_cell(repo.description),
                 repo.stargazers_count,
-                repo.language,
-                json.dumps(repo.topics, ensure_ascii=False) if repo.topics else "",
-                repo.default_branch,
-                repo.created_at,
-                repo.updated_at,
-                repo.pushed_at,
+                _sanitize_csv_cell(repo.language),
+                _sanitize_csv_cell(json.dumps(repo.topics, ensure_ascii=False) if repo.topics else ""),
+                _sanitize_csv_cell(repo.default_branch),
+                _sanitize_csv_cell(repo.created_at),
+                _sanitize_csv_cell(repo.updated_at),
+                _sanitize_csv_cell(repo.pushed_at),
                 repo.forks_count,
                 repo.open_issues_count,
                 repo.watchers_count,
                 repo.size_kb,
-                repo.license_spdx_id,
+                _sanitize_csv_cell(repo.license_spdx_id),
                 repo.is_fork,
                 repo.is_archived,
-                repo.visibility,
+                _sanitize_csv_cell(repo.visibility),
                 repo.readme_relevance_score,
                 repo.deep_relevance_score,
-                repo.deep_relevance_error
+                _sanitize_csv_cell(repo.deep_relevance_error)
             ])
             
     return csv_file

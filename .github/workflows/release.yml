@@ -1,0 +1,107 @@
+name: Production Windows Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version override (e.g. 1.1.0)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Windows Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Extract Release Version
+        id: vars
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ("${{ github.event.inputs.version }}") {
+            $version = "${{ github.event.inputs.version }}"
+          } elseif ($tag -match '^v(?<ver>\d+\.\d+\.\d+.*)$') {
+            $version = $Matches['ver']
+          } else {
+            $version = "1.1.0"
+          }
+          Write-Host "Releasing version: $version"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5.1.1
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Build Dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[build] sv_ttk
+
+      - name: Run Test Suite Verification Gate
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Build Application (PyInstaller)
+        shell: pwsh
+        run: |
+          .\build_windows.ps1
+
+      - name: Generate Inno Setup Installer
+        shell: pwsh
+        run: |
+          iscc.exe /DMyAppVersion="${{ steps.vars.outputs.version }}" packaging/installer.iss
+
+      - name: Package & Generate Release Manifests
+        shell: pwsh
+        run: |
+          .\release_windows.ps1 -Version "${{ steps.vars.outputs.version }}" -UpdateBaseUrl "https://github.com/${{ github.repository }}/releases/download/v${{ steps.vars.outputs.version }}"
+
+      - name: Verify Release Artifacts Gate
+        shell: pwsh
+        run: |
+          .\verify_release_windows.ps1 -Version "${{ steps.vars.outputs.version }}"
+
+      - name: Compute SHA256 Checksums
+        shell: pwsh
+        run: |
+          Set-Location release
+          Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content -Path "checksums.sha256" -Encoding UTF8
+          Get-Content "checksums.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2.0.8
+        with:
+          tag_name: "v${{ steps.vars.outputs.version }}"
+          name: "GitHub Search & Downloader v${{ steps.vars.outputs.version }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/*.zip
+            release/*.exe
+            release/*.json
+            release/*.txt
+            release/checksums.sha256

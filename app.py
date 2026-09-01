@@ -30,6 +30,7 @@ from github_harvester.service import (
     run_download_for_repositories,
 )
 from github_harvester.github_api import GitHubApiError
+from github_harvester.version import __version__
 from github_harvester.secret_store import (
     DEFAULT_SECRET_NAME,
     SecretStoreError,
@@ -256,6 +257,17 @@ def build_parser(defaults: dict[str, Any] | None = None, secret_mode: bool = Fal
 
     parser = argparse.ArgumentParser(
         description="Search GitHub repositories by topic/query and download them locally."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show program's version number and exit.",
+    )
+    parser.add_argument(
+        "--check-updates",
+        action="store_true",
+        help="Check for application updates on GitHub Releases and exit.",
     )
     parser.add_argument(
         "--config-file",
@@ -628,6 +640,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     probe_parser = argparse.ArgumentParser(add_help=False)
     probe_parser.add_argument("--config-file", default="")
     probe_parser.add_argument("--metadata-file", default="")
+    probe_parser.add_argument("--check-updates", action="store_true")
     probe_parser.add_argument("--save-github-token", action="store_true")
     probe_parser.add_argument("--delete-saved-github-token", action="store_true")
     probe_parser.add_argument("--show-token-status", action="store_true")
@@ -648,7 +661,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         defaults["metadata_file"] = metadata_file_raw
 
     secret_mode = bool(
-        probe_args.save_github_token
+        probe_args.check_updates
+        or probe_args.save_github_token
         or probe_args.delete_saved_github_token
         or probe_args.show_token_status
         or probe_args.save_ai_api_key
@@ -662,6 +676,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parse_args(argv)
+        if getattr(args, "check_updates", False):
+            from github_harvester.updater import UpdateChecker
+            checker = UpdateChecker()
+            res = checker.check_for_updates(force=True)
+            if res.update_available and res.latest_release:
+                print(f"Доступна новая версия: v{res.latest_release.version_str} (текущая: v{res.current_version})")
+                print(f"Ссылка: {res.latest_release.html_url}")
+            else:
+                print(f"У вас установлена актуальная версия: v{res.current_version}")
+            return 0
         if args.save_github_token:
             token = getpass.getpass("GitHub token: ").strip()
             store_secret(DEFAULT_SECRET_NAME, token)

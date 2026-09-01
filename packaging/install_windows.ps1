@@ -9,7 +9,7 @@ $SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceExe = Join-Path $SourceDir "GithubSearchDownloader.exe"
 $ProductName = "GithubSearchDownloader"
 $DisplayName = "GitHub Search Downloader"
-$ProductVersion = "1.0.0"
+$ProductVersion = "1.1.0"
 $UninstallRegistrySubkey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\GithubSearchDownloader"
 $UninstallRegistryKey = "HKCU:\$UninstallRegistrySubkey"
 

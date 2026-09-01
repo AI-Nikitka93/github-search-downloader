@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -155,10 +156,12 @@ def clone_repository(
 
     with tempfile.TemporaryFile() as err_file:
         try:
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.DEVNULL,
                 stderr=err_file,
+                creationflags=creationflags,
             )
         except Exception as exc:
             if target_path.exists():
@@ -227,6 +230,9 @@ def clone_repository(
 
 
 def build_git_clone_command(repository: Repo, target_path: Path, options: CloneOptions) -> list[str]:
+    clone_url = str(repository.clone_url or "").strip()
+    if not re.match(r"^(https?|git)://", clone_url):
+        raise ValueError(f"Недопустимый протокол clone URL: {clone_url}")
     command = ["git", "clone"]
     if options.depth > 0:
         command.extend(["--depth", str(options.depth)])
@@ -236,7 +242,7 @@ def build_git_clone_command(repository: Repo, target_path: Path, options: CloneO
         command.append("--single-branch")
     if options.no_tags:
         command.append("--no-tags")
-    command.extend(["--quiet", repository.clone_url, str(target_path)])
+    command.extend(["--quiet", "--", clone_url, str(target_path)])
     return command
 
 

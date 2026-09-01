@@ -36,7 +36,7 @@ class GitHubOAuthDeviceFlow:
     def __init__(self, client_id: str = OAUTH_CLIENT_ID):
         self.client_id = client_id
 
-    def request_device_code(self) -> dict:
+    def request_device_code(self, scope: str = "public_repo read:user", timeout: int = 15) -> dict:
         """
         Шаг 1: Запрашиваем код устройства.
         Возвращает dict с 'device_code', 'user_code', 'verification_uri', 'interval'
@@ -44,19 +44,26 @@ class GitHubOAuthDeviceFlow:
         url = "https://github.com/login/device/code"
         data = urllib.parse.urlencode({
             "client_id": self.client_id,
-            "scope": "repo read:user"
+            "scope": scope,
         }).encode("utf-8")
         
         req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
                 return json.loads(response.read().decode())
         except Exception as e:
             raise RuntimeError(f"Ошибка запроса device_code: {e}")
 
-    def poll_for_token(self, device_code: str, interval: int, status_callback: Callable[[str], None]) -> str:
+    def poll_for_token(
+        self,
+        device_code: str,
+        interval: int = 5,
+        status_callback: Optional[Callable[[str], None]] = None,
+        max_duration_seconds: int = 900,
+        request_timeout: int = 15,
+    ) -> str:
         """
-        Шаг 2: В цикле ждем, пока пользователь введет код.
+        Шаг 2: В цикле ждем, пока пользователь введет код (с таймаутом до 15 минут).
         """
         url = "https://github.com/login/oauth/access_token"
         data = urllib.parse.urlencode({
@@ -65,10 +72,14 @@ class GitHubOAuthDeviceFlow:
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
         }).encode("utf-8")
         
+        start_time = time.monotonic()
         while True:
+            if time.monotonic() - start_time > max_duration_seconds:
+                raise TimeoutError(f"Превышено максимальное время ожидания авторизации ({max_duration_seconds} сек).")
+
             req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
             try:
-                with urllib.request.urlopen(req) as response:
+                with urllib.request.urlopen(req, timeout=request_timeout) as response:
                     resp_data = json.loads(response.read().decode())
                     
                     if "access_token" in resp_data:
@@ -76,10 +87,12 @@ class GitHubOAuthDeviceFlow:
                     elif "error" in resp_data:
                         err = resp_data["error"]
                         if err == "authorization_pending":
-                            status_callback("Ожидание авторизации в браузере...")
+                            if status_callback:
+                                status_callback("Ожидание авторизации в браузере...")
                         elif err == "slow_down":
                             interval += 5
-                            status_callback("Ожидание авторизации... (замедление)")
+                            if status_callback:
+                                status_callback("Ожидание авторизации... (замедление)")
                         elif err == "expired_token":
                             raise RuntimeError("Время ожидания истекло (код просрочен). Попробуйте снова.")
                         elif err == "access_denied":
@@ -87,9 +100,9 @@ class GitHubOAuthDeviceFlow:
                         else:
                             raise RuntimeError(f"Ошибка: {err}")
             except Exception as e:
-                # В случае сетевых ошибок пробрасываем выше или игнорируем и ждем
-                if not isinstance(e, RuntimeError):
-                    status_callback(f"Сетевая ошибка, повторяем... ({e})")
+                if not isinstance(e, (RuntimeError, TimeoutError)):
+                    if status_callback:
+                        status_callback(f"Сетевая ошибка, повторяем... ({e})")
                 else:
                     raise e
             

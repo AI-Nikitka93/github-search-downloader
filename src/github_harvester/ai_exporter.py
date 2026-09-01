@@ -40,21 +40,36 @@ def is_binary_file(filepath: Path) -> bool:
 def generate_repo_map(repo_path: Path) -> str:
     """Generate a text-based tree representation of the repository."""
     lines = []
-    
+    visited: set[Path] = set()
+    resolved_root = repo_path.resolve()
+    visited.add(resolved_root)
+
     def walk_dir(current_path: Path, prefix: str = ""):
         try:
             entries = sorted(list(current_path.iterdir()), key=lambda x: (x.is_file(), x.name.lower()))
-        except PermissionError:
+        except (PermissionError, OSError):
             return
-            
+
         entries = [e for e in entries if e.name not in IGNORED_DIRECTORIES]
-        
+
         for i, entry in enumerate(entries):
+            if entry.is_symlink():
+                continue
+            try:
+                resolved = entry.resolve()
+                if not resolved.is_relative_to(resolved_root):
+                    continue
+            except (RuntimeError, ValueError, OSError):
+                continue
+
             is_last = (i == len(entries) - 1)
             pointer = "└── " if is_last else "├── "
             lines.append(prefix + pointer + entry.name)
-            
-            if entry.is_dir():
+
+            if entry.is_dir() and not entry.is_symlink():
+                if resolved in visited:
+                    continue
+                visited.add(resolved)
                 extension = "    " if is_last else "│   "
                 walk_dir(entry, prefix + extension)
 
@@ -62,12 +77,14 @@ def generate_repo_map(repo_path: Path) -> str:
     walk_dir(repo_path)
     return "\n".join(lines)
 
+from github_harvester.downloader import sanitize_path_segment
+
 def export_repo_for_ai(repo_name: str, repo_path: Path, output_root: Path) -> Path:
     """
     Generate an AI-ready XML dump (Repomix format) for a downloaded repository.
     Saves the result to output_root/ai_exports/repo_name.xml.
     """
-    safe_name = repo_name.replace("/", "_")
+    safe_name = sanitize_path_segment(repo_name.replace("/", "_"))
     ai_export_dir = output_root / "ai_exports"
     ai_export_dir.mkdir(parents=True, exist_ok=True)
     
@@ -93,6 +110,14 @@ def export_repo_for_ai(repo_name: str, repo_path: Path, output_root: Path) -> Pa
                 if file in IGNORED_DIRECTORIES:
                     continue
                 filepath = Path(root) / file
+                if filepath.is_symlink():
+                    continue
+                try:
+                    resolved = filepath.resolve()
+                    if not resolved.is_relative_to(repo_path.resolve()):
+                        continue
+                except (RuntimeError, ValueError):
+                    continue
                 if not filepath.is_file():
                     continue
                 if is_binary_file(filepath):

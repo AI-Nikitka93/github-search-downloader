@@ -31,6 +31,15 @@ if (Test-Path "$Root\assets\icon.ico") {
     $iconArgs += "$Root\assets;assets"
 }
 
+# Generate Windows PE version resource dynamically
+python "$Root\packaging\generate_version_info.py"
+$versionInfoFile = "$Root\_build\version_info.txt"
+$versionArgs = @()
+if (Test-Path $versionInfoFile) {
+    $versionArgs += "--version-file"
+    $versionArgs += $versionInfoFile
+}
+
 $runningApp = Get-CimInstance Win32_Process -Filter "Name='GithubSearchDownloader.exe'" |
     Where-Object { $_.ExecutablePath -eq $DistExe }
 if ($runningApp) {
@@ -43,10 +52,12 @@ python -m PyInstaller `
     --clean `
     --onefile `
     --paths "$Root\src" `
+    --collect-all "sv_ttk" `
     --workpath "$PyInstallerBuildRoot" `
     --specpath "$PyInstallerSpecRoot" `
     @modeArgs `
     @iconArgs `
+    @versionArgs `
     --name "GithubSearchDownloader" `
     "gui_app.py"
 

@@ -5,10 +5,14 @@ import json
 import os
 import queue
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import traceback
+import urllib.error
 import urllib.parse
+import urllib.request
 import webbrowser
 import sv_ttk
 from dataclasses import replace
@@ -34,6 +38,7 @@ from tkinter import (
     filedialog,
     messagebox,
     Canvas,
+    Menu,
 )
 from tkinter import ttk
 
@@ -87,6 +92,22 @@ from github_harvester.service import (
 )
 from github_harvester.models import Repo
 from github_harvester.github_auth import GitHubOAuthDeviceFlow, get_github_cli_token
+from github_harvester.version import (
+    APP_DISPLAY_NAME,
+    APP_NAME,
+    AUTHOR,
+    COPYRIGHT,
+    CURRENT_SEMVER,
+    GITHUB_REPO_URL,
+    __version__,
+)
+from github_harvester.updater import (
+    CheckResult,
+    ReleaseInfo,
+    SelfUpdater,
+    UpdateChecker,
+    UpdateDownloader,
+)
 
 
 SETTINGS_FILE = ROOT_DIR / "gui_settings.json"
@@ -263,10 +284,624 @@ class ScrollableFrame(ttk.Frame):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
 
+class AboutDialog(Toplevel):
+    """About application modal dialog."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title(f"О программе — {APP_DISPLAY_NAME}")
+        self.geometry("540x440")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        container = ttk.Frame(self, padding=24)
+        container.pack(fill=BOTH, expand=True)
+
+        title = ttk.Label(
+            container,
+            text=APP_DISPLAY_NAME,
+            font=("Segoe UI Variable Display", 16, "bold"),
+        )
+        title.pack(anchor="center", pady=(0, 4))
+
+        ver = ttk.Label(
+            container,
+            text=f"Версия {__version__} (Harvest Edition)",
+            foreground="#57606a",
+        )
+        ver.pack(anchor="center", pady=(0, 16))
+
+        desc = (
+            f"{APP_DISPLAY_NAME} — инструмент для интеллектуального поиска, "
+            "фильтрации нейросетями (Ollama, DeepSeek, OpenAI) и пакетной параллельной "
+            "загрузки исходного кода из GitHub.\n\n"
+            "• Автоматический обход лимитов через шардирование по датам\n"
+            "• Надежная защита токенов через Windows DPAPI\n"
+            "• Скоростное клонирование (blobless / shallow clone)\n"
+            "• Экспорт в SQLite (WAL mode), CSV и AI-ready формат (Repomix)"
+        )
+        ttk.Label(container, text=desc, wraplength=480, justify="left").pack(anchor="w", pady=(0, 16))
+
+        links_frame = ttk.Frame(container)
+        links_frame.pack(fill="x", pady=(0, 16))
+
+        ttk.Button(
+            links_frame,
+            text="🌐 Репозиторий GitHub",
+            command=lambda: webbrowser.open(GITHUB_REPO_URL),
+        ).pack(side=LEFT, padx=4)
+
+        ttk.Button(
+            links_frame,
+            text="📖 Документация",
+            command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"),
+        ).pack(side=LEFT, padx=4)
+
+        btn_row = ttk.Frame(container)
+        btn_row.pack(side="bottom", fill="x")
+
+        copy_lbl = ttk.Label(btn_row, text=COPYRIGHT, font=("Segoe UI", 8), foreground="#8b949e")
+        copy_lbl.pack(side=LEFT)
+
+        ttk.Button(btn_row, text="Закрыть", command=self.destroy).pack(side=RIGHT)
+
+
+class UpdateCheckerDialog(Toplevel):
+    """Update checker and downloader dialog."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Проверка обновлений")
+        self.geometry("520x360")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        self.checker = UpdateChecker()
+        self.downloader = UpdateDownloader()
+        self.latest_release: Optional[ReleaseInfo] = None
+
+        self.status_var = StringVar(value="🔍 Проверка наличия новых версий на GitHub...")
+        self.notes_var = StringVar(value="")
+        self.progress_var = DoubleVar(value=0.0)
+        self.progress_text_var = StringVar(value="")
+
+        self._build_ui()
+        self._check_updates_async()
+
+    def _build_ui(self):
+        container = ttk.Frame(self, padding=20)
+        container.pack(fill=BOTH, expand=True)
+
+        ttk.Label(container, textvariable=self.status_var, font=("Segoe UI Variable Display", 11, "bold")).pack(
+            anchor="w", pady=(0, 6)
+        )
+
+        sub = ttk.Label(
+            container,
+            text=f"Текущая версия: v{__version__}",
+            foreground="#57606a",
+        )
+        sub.pack(anchor="w", pady=(0, 10))
+
+        self.notes_box = Text(container, height=8, wrap="word", font=("Segoe UI Variable Text", 9))
+        self.notes_box.pack(fill=BOTH, expand=True, pady=(0, 10))
+
+        self.progress_bar = ttk.Progressbar(container, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill="x", pady=(0, 4))
+
+        ttk.Label(container, textvariable=self.progress_text_var, font=("Segoe UI", 9), foreground="#57606a").pack(
+            anchor="w", pady=(0, 10)
+        )
+
+        self.btn_row = ttk.Frame(container)
+        self.btn_row.pack(fill="x")
+
+        self.btn_action = ttk.Button(self.btn_row, text="Закрыть", command=self.destroy)
+        self.btn_action.pack(side=RIGHT)
+
+    def _check_updates_async(self):
+        def _worker():
+            res = self.checker.check_for_updates(force=True)
+            if res.update_available and res.latest_release:
+                self.latest_release = res.latest_release
+                def _found():
+                    self.status_var.set(f"🎉 Доступна новая версия: v{res.latest_release.version_str}!")
+                    self.notes_box.delete("1.0", END)
+                    self.notes_box.insert("1.0", res.latest_release.body_markdown or "Нет описания изменений.")
+                    self.btn_action.configure(
+                        text="⬇ Обновить и перезапустить",
+                        command=self._start_download,
+                    )
+                self.after(0, _found)
+            else:
+                def _uptodate():
+                    self.status_var.set(f"✅ У вас установлена актуальная версия (v{__version__})")
+                    self.notes_box.delete("1.0", END)
+                    self.notes_box.insert("1.0", "Все компоненты обновлены до последней версии.")
+                self.after(0, _uptodate)
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _start_download(self):
+        if not self.latest_release:
+            return
+        self.btn_action.configure(state="disabled")
+        self.status_var.set("Загрузка пакета обновления...")
+
+        def _worker():
+            def _on_progress(downloaded: int, total: int, speed: float):
+                pct = (downloaded / total * 100) if total > 0 else 0
+                mb_down = downloaded / (1024 * 1024)
+                mb_tot = total / (1024 * 1024)
+                speed_mb = speed / (1024 * 1024)
+                self.after(0, lambda: self._update_progress_ui(pct, mb_down, mb_tot, speed_mb))
+
+            try:
+                zip_path = self.downloader.download_and_verify(self.latest_release, progress_callback=_on_progress)
+                self.after(0, lambda: self._apply_and_restart(zip_path))
+            except Exception as exc:
+                self.after(0, lambda: messagebox.showerror("Ошибка обновления", str(exc), parent=self))
+                self.after(0, lambda: self.btn_action.configure(state="normal"))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _update_progress_ui(self, pct: float, mb_down: float, mb_tot: float, speed_mb: float):
+        self.progress_var.set(pct)
+        self.progress_text_var.set(f"{mb_down:.1f} MB / {mb_tot:.1f} MB ({speed_mb:.1f} MB/s)")
+
+    def _apply_and_restart(self, zip_path: Path):
+        self.status_var.set("Установка обновления...")
+        current_exe = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).resolve()
+        SelfUpdater.launch_updater_and_restart(zip_path, current_exe, self.latest_release.version_str)
+
+
+class HeaderStatusWidget(ttk.Frame):
+    """Real-time live status pill widget displayed in the top header."""
+
+    def __init__(self, parent, on_github_click=None, on_ai_click=None, on_disk_click=None):
+        super().__init__(parent, padding=(0, 4))
+        self.on_github_click = on_github_click
+        self.on_ai_click = on_ai_click
+        self.on_disk_click = on_disk_click
+
+        self.github_text_var = StringVar(value="🐙 GitHub: Проверка...")
+        self.ai_text_var = StringVar(value="🧠 ИИ: Проверка...")
+        self.disk_text_var = StringVar(value="💾 Диск: ...")
+
+        self._build_ui()
+
+    def _build_ui(self):
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
+
+        self.btn_gh = ttk.Button(
+            self,
+            textvariable=self.github_text_var,
+            command=self.on_github_click,
+        )
+        self.btn_gh.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.btn_ai = ttk.Button(
+            self,
+            textvariable=self.ai_text_var,
+            command=self.on_ai_click,
+        )
+        self.btn_ai.grid(row=0, column=1, sticky="ew", padx=2)
+
+        self.btn_disk = ttk.Button(
+            self,
+            textvariable=self.disk_text_var,
+            command=self.on_disk_click,
+        )
+        self.btn_disk.grid(row=0, column=2, sticky="ew", padx=(4, 0))
+
+    def update_github(self, username: str | None, remaining: int, limit: int):
+        if username:
+            self.github_text_var.set(f"🐙 GitHub: @{username} ({remaining:,}/{limit:,})")
+        else:
+            self.github_text_var.set(f"🐙 GitHub: Анонимный ({remaining:,}/{limit:,})")
+
+    def update_ai(self, provider_name: str, model_name: str, ready: bool):
+        icon = "🟢" if ready else "⚪"
+        self.ai_text_var.set(f"🧠 ИИ: {icon} {provider_name} ({model_name})")
+
+    def update_disk(self, workspace_path: Path):
+        try:
+            workspace_path.mkdir(parents=True, exist_ok=True)
+            total, used, free = shutil.disk_usage(workspace_path)
+            free_gb = free / (1024**3)
+            self.disk_text_var.set(f"💾 {workspace_path.anchor} ({free_gb:.1f} GB свободно)")
+        except Exception:
+            self.disk_text_var.set("💾 Диск: Готов")
+
+
+class FirstRunWizard(Toplevel):
+    """Zero-friction 4-step first-run onboarding wizard."""
+
+    def __init__(self, master, on_finish_callback=None):
+        super().__init__(master)
+        self.title(f"Первоначальная настройка — {APP_DISPLAY_NAME}")
+        self.geometry("780x560")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        self.on_finish_callback = on_finish_callback
+        self.current_step = 1
+
+        self.github_user_var = StringVar(value="Не подключен")
+        self.github_rate_limit_var = StringVar(value="Лимит: 60 запросов/час")
+        self.github_status_msg_var = StringVar(value="")
+        self.oauth_in_progress = False
+
+        default_workspace = Path.home() / "Downloads" / "GitHubRepositories"
+        self.workspace_var = StringVar(value=str(default_workspace))
+        self.disk_info_var = StringVar(value="")
+
+        self.ai_mode_var = StringVar(value="local")
+        self.ollama_model_var = StringVar(value="")
+        self.ollama_status_var = StringVar(value="Поиск Ollama...")
+        self.cloud_provider_var = StringVar(value="DeepSeek")
+        self.cloud_key_var = StringVar(value="")
+
+        self.selected_preset: dict | None = None
+
+        self._build_ui()
+        self._show_step(1)
+        self._update_disk_info()
+        self._probe_ai_background()
+
+    def _build_ui(self):
+        self.container = ttk.Frame(self, padding=20)
+        self.container.pack(fill=BOTH, expand=True)
+
+        self.header_frame = ttk.Frame(self.container)
+        self.header_frame.pack(fill="x", pady=(0, 15))
+
+        self.step_label = ttk.Label(
+            self.header_frame,
+            text="Шаг 1 из 4: Авторизация GitHub",
+            font=("Segoe UI Variable Display", 13, "bold"),
+        )
+        self.step_label.pack(side=LEFT)
+
+        self.progress_bar = ttk.Progressbar(self.header_frame, length=200, mode="determinate", value=25)
+        self.progress_bar.pack(side=RIGHT)
+
+        self.content_frame = ttk.Frame(self.container)
+        self.content_frame.pack(fill=BOTH, expand=True)
+
+        self.nav_frame = ttk.Frame(self.container)
+        self.nav_frame.pack(fill="x", pady=(15, 0))
+
+        self.btn_back = ttk.Button(self.nav_frame, text="⬅ Назад", command=self._prev_step)
+        self.btn_back.pack(side=LEFT)
+
+        self.btn_skip = ttk.Button(self.nav_frame, text="Пропустить шаг", command=self._next_step)
+        self.btn_skip.pack(side=LEFT, padx=10)
+
+        self.btn_next = ttk.Button(self.nav_frame, text="Далее ➔", command=self._next_step)
+        self.btn_next.pack(side=RIGHT)
+
+    def _show_step(self, step: int):
+        self.current_step = step
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+
+        self.progress_bar["value"] = step * 25
+        self.btn_back.configure(state="normal" if step > 1 else "disabled")
+        self.btn_skip.pack_forget()
+
+        if step == 1:
+            self.step_label.configure(text="Шаг 1 из 4: Авторизация GitHub (1-Click)")
+            self.btn_skip.pack(side=LEFT, padx=10)
+            self._render_step1(self.content_frame)
+        elif step == 2:
+            self.step_label.configure(text="Шаг 2 из 4: Папка для репозиториев")
+            self._render_step2(self.content_frame)
+        elif step == 3:
+            self.step_label.configure(text="Шаг 3 из 4: Подключение ИИ-помощника")
+            self.btn_skip.pack(side=LEFT, padx=10)
+            self._render_step3(self.content_frame)
+        elif step == 4:
+            self.step_label.configure(text="Шаг 4 из 4: Готово! Быстрый старт")
+            self.btn_next.configure(text="🚀 Запустить Harvester", command=self._finish)
+            self._render_step4(self.content_frame)
+
+    def _render_step1(self, parent):
+        box = ttk.LabelFrame(parent, text=" 🐙 Подключение учетной записи GitHub ", padding=15)
+        box.pack(fill=BOTH, expand=True)
+
+        ttk.Label(
+            box,
+            text="Авторизация увеличивает лимит запросов к API GitHub с 60 до 5 000 в час,\n"
+            "что позволяет мгновенно находить и анализировать тысячи проектов.",
+            font=("Segoe UI Variable Text", 10),
+        ).pack(anchor="w", pady=(0, 15))
+
+        btn_row = ttk.Frame(box)
+        btn_row.pack(fill="x", pady=5)
+
+        ttk.Button(
+            btn_row,
+            text="🔑 Войти через GitHub (OAuth 1-Click)",
+            command=self._start_oauth_flow,
+        ).pack(side=LEFT, padx=(0, 10))
+
+        ttk.Button(
+            btn_row,
+            text="💻 Импорт из GitHub CLI",
+            command=self._import_gh_cli,
+        ).pack(side=LEFT)
+
+        self.status_card = ttk.Frame(box, relief="groove", padding=10)
+        self.status_card.pack(fill="x", pady=15)
+
+        ttk.Label(self.status_card, textvariable=self.github_user_var, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        ttk.Label(self.status_card, textvariable=self.github_rate_limit_var, foreground="#57606a").pack(anchor="w")
+        ttk.Label(self.status_card, textvariable=self.github_status_msg_var, foreground="#0969da").pack(
+            anchor="w", pady=(4, 0)
+        )
+
+    def _render_step2(self, parent):
+        box = ttk.LabelFrame(parent, text=" 💾 Рабочая папка ", padding=15)
+        box.pack(fill=BOTH, expand=True)
+
+        ttk.Label(box, text="Куда сохранять скачиваемые репозитории:").pack(anchor="w")
+
+        path_row = ttk.Frame(box)
+        path_row.pack(fill="x", pady=8)
+
+        entry = ttk.Entry(path_row, textvariable=self.workspace_var)
+        entry.pack(side=LEFT, fill="x", expand=True, padx=(0, 8))
+
+        def browse():
+            chosen = filedialog.askdirectory(initialdir=self.workspace_var.get())
+            if chosen:
+                self.workspace_var.set(chosen)
+                self._update_disk_info()
+
+        ttk.Button(path_row, text="Обзор...", command=browse).pack(side=RIGHT)
+        ttk.Label(box, textvariable=self.disk_info_var, font=("Segoe UI", 10)).pack(anchor="w", pady=10)
+
+    def _render_step3(self, parent):
+        box = ttk.LabelFrame(parent, text=" 🧠 Настройка ИИ ", padding=15)
+        box.pack(fill=BOTH, expand=True)
+
+        r1 = ttk.Radiobutton(
+            box,
+            text="Локальный ИИ (Ollama) — Рекомендуется (Бесплатно и приватно)",
+            variable=self.ai_mode_var,
+            value="local",
+        )
+        r1.pack(anchor="w", pady=(0, 4))
+
+        ollama_frame = ttk.Frame(box, padding=(20, 0, 0, 10))
+        ollama_frame.pack(fill="x")
+        ttk.Label(ollama_frame, textvariable=self.ollama_status_var).pack(anchor="w")
+        self.combo_ollama = ttk.Combobox(ollama_frame, textvariable=self.ollama_model_var, state="readonly", width=30)
+        self.combo_ollama.pack(side=LEFT, pady=4)
+        ttk.Button(ollama_frame, text="🔄 Обновить", command=self._probe_ai_background).pack(side=LEFT, padx=8)
+
+        r2 = ttk.Radiobutton(
+            box,
+            text="Облачные ИИ (DeepSeek, OpenAI, OpenRouter)",
+            variable=self.ai_mode_var,
+            value="cloud",
+        )
+        r2.pack(anchor="w", pady=(10, 4))
+
+        cloud_frame = ttk.Frame(box, padding=(20, 0, 0, 10))
+        cloud_frame.pack(fill="x")
+        ttk.Label(cloud_frame, text="API Key:").pack(side=LEFT)
+        ttk.Entry(cloud_frame, textvariable=self.cloud_key_var, show="*", width=30).pack(side=LEFT, padx=8)
+        ttk.Button(cloud_frame, text="⚡ Проверить", command=self._test_cloud_key).pack(side=LEFT)
+
+        r3 = ttk.Radiobutton(
+            box,
+            text="Без ИИ (Только прямой поиск по фильтрам)",
+            variable=self.ai_mode_var,
+            value="none",
+        )
+        r3.pack(anchor="w", pady=(10, 0))
+
+    def _render_step4(self, parent):
+        box = ttk.LabelFrame(parent, text=" ✨ Готовые быстрые шаблоны ", padding=15)
+        box.pack(fill=BOTH, expand=True)
+
+        ttk.Label(box, text="Выберите шаблон для первого поиска или начните с чистого листа:", font=("Segoe UI", 10)).pack(
+            anchor="w", pady=(0, 10)
+        )
+
+        presets = [
+            ("🤖 AI & LLM Библиотеки", "topic:machine-learning stars:>500", "Найти передовые библиотеки для работы с LLM"),
+            ("🕷 Парсеры и Краулеры", "web-scraper crawler python stars:>100", "Найти быстрые и надежные парсеры"),
+            ("✈️ Telegram-Боты", "telegram bot aiogram python stars:>50", "Найти лучшие готовые шаблоны Telegram-ботов"),
+            ("🛡 OSINT & Кибербезопасность", "osint tools reconnaissance security", "Собрать современные утилиты разведки"),
+        ]
+
+        grid_frame = ttk.Frame(box)
+        grid_frame.pack(fill=BOTH, expand=True)
+        grid_frame.columnconfigure(0, weight=1)
+        grid_frame.columnconfigure(1, weight=1)
+
+        for i, (title, query, task) in enumerate(presets):
+            btn = ttk.Button(
+                grid_frame,
+                text=f"{title}\n({query[:28]}...)",
+                command=lambda q=query, t=task: self._select_preset(q, t),
+            )
+            btn.grid(row=i // 2, column=i % 2, padx=6, pady=6, sticky="nsew")
+
+    def _start_oauth_flow(self):
+        if self.oauth_in_progress:
+            return
+        self.oauth_in_progress = True
+        self.github_status_msg_var.set("Запрос одноразового кода в GitHub...")
+
+        def _worker():
+            try:
+                auth = GitHubOAuthDeviceFlow()
+                info = auth.request_device_code()
+                user_code = info["user_code"]
+                uri = info["verification_uri"]
+
+                try:
+                    subprocess.run(
+                        ["clip.exe"],
+                        input=user_code,
+                        text=True,
+                        check=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                    )
+                except Exception:
+                    pass
+                self.clipboard_clear()
+                self.clipboard_append(user_code)
+
+                self.after(
+                    0,
+                    lambda: self.github_status_msg_var.set(
+                        f"Код {user_code} скопирован в буфер! Открываем браузер..."
+                    ),
+                )
+                webbrowser.open(uri)
+
+                token = auth.poll_for_token(
+                    info["device_code"],
+                    info.get("interval", 5),
+                    lambda msg: self.after(0, lambda: self.github_status_msg_var.set(msg)),
+                )
+
+                store_secret(DEFAULT_SECRET_NAME, token)
+                self._fetch_github_user_badge(token)
+            except Exception as exc:
+                self.after(0, lambda: self.github_status_msg_var.set(f"Ошибка: {exc}"))
+            finally:
+                self.oauth_in_progress = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _fetch_github_user_badge(self, token: str):
+        def _fetch():
+            try:
+                req = urllib.request.Request(
+                    "https://api.github.com/user",
+                    headers={"Authorization": f"Bearer {token}", "User-Agent": "GitHub-Harvester-App"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    login = data.get("login", "User")
+
+                req_rate = urllib.request.Request(
+                    "https://api.github.com/rate_limit",
+                    headers={"Authorization": f"Bearer {token}", "User-Agent": "GitHub-Harvester-App"},
+                )
+                with urllib.request.urlopen(req_rate, timeout=10) as resp:
+                    rate_data = json.loads(resp.read().decode("utf-8"))
+                    remaining = rate_data.get("resources", {}).get("core", {}).get("remaining", 5000)
+                    limit = rate_data.get("resources", {}).get("core", {}).get("limit", 5000)
+
+                self.after(0, lambda: self._set_user_success(login, remaining, limit))
+            except Exception:
+                self.after(
+                    0,
+                    lambda: self.github_status_msg_var.set("Токен сохранен, но профиль не удалось загрузить."),
+                )
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _set_user_success(self, login: str, remaining: int, limit: int):
+        self.github_user_var.set(f"✅ Авторизован: @{login}")
+        self.github_rate_limit_var.set(f"Лимит API: {remaining} / {limit} запросов/час")
+        self.github_status_msg_var.set("Авторизация успешно завершена!")
+
+    def _import_gh_cli(self):
+        token = get_github_cli_token()
+        if token:
+            store_secret(DEFAULT_SECRET_NAME, token)
+            self._fetch_github_user_badge(token)
+        else:
+            messagebox.showwarning("GitHub CLI", "Токен в GitHub CLI (`gh`) не найден.")
+
+    def _update_disk_info(self):
+        try:
+            path = Path(self.workspace_var.get())
+            path.mkdir(parents=True, exist_ok=True)
+            total, used, free = shutil.disk_usage(path)
+            free_gb = free / (1024**3)
+            self.disk_info_var.set(f"Диск {path.anchor}: Свободно {free_gb:.1f} ГБ (Доступно для загрузки)")
+        except Exception:
+            self.disk_info_var.set("Не удалось определить свободное место на диске.")
+
+    def _probe_ai_background(self):
+        def _worker():
+            res = discover_local_models(timeout=3)
+            if res:
+                provider, models = res
+
+                def _update():
+                    self.ollama_status_var.set(f"🟢 Найден {provider.provider_type.upper()} ({len(models)} моделей)")
+                    if hasattr(self, "combo_ollama"):
+                        self.combo_ollama["values"] = models
+                        if models:
+                            self.ollama_model_var.set(models[0])
+
+                self.after(0, _update)
+            else:
+                self.after(0, lambda: self.ollama_status_var.set("⚪ Локальный сервер Ollama не запущен"))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _test_cloud_key(self):
+        key = self.cloud_key_var.get().strip()
+        provider = self.cloud_provider_var.get().strip()
+        if not key:
+            messagebox.showwarning("API Key", "Введите API-ключ для сохранения.", parent=self)
+            return
+        endpoint = "https://api.deepseek.com/v1" if provider == "DeepSeek" else "https://api.openai.com/v1"
+        secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, endpoint)
+        try:
+            store_secret(secret_name, key)
+            messagebox.showinfo("Проверка ключа", f"Ключ для {provider} успешно сохранен в защищенное хранилище Windows DPAPI!", parent=self)
+        except Exception as exc:
+            messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить ключ в DPAPI: {exc}", parent=self)
+
+    def _select_preset(self, query: str, task: str):
+        self.selected_preset = {"query": query, "ai_task": task}
+        self._finish()
+
+    def _prev_step(self):
+        if self.current_step > 1:
+            self._show_step(self.current_step - 1)
+
+    def _next_step(self):
+        if self.current_step < 4:
+            self._show_step(self.current_step + 1)
+        else:
+            self._finish()
+
+    def _finish(self):
+        if self.on_finish_callback:
+            self.on_finish_callback(
+                {
+                    "workspace": self.workspace_var.get(),
+                    "ai_mode": self.ai_mode_var.get(),
+                    "ollama_model": self.ollama_model_var.get(),
+                    "cloud_provider": self.cloud_provider_var.get(),
+                    "cloud_key": self.cloud_key_var.get().strip(),
+                    "preset": self.selected_preset,
+                }
+            )
+        self.destroy()
+
+
 class GitHubSearchGUI:
     def __init__(self, root: Tk) -> None:
         self.root = root
-        self.root.title("Поиск и загрузка GitHub")
+        self.root.title(f"{APP_DISPLAY_NAME} v{__version__}")
         self.root.geometry("1180x940")
         self.root.minsize(1080, 820)
 
@@ -409,6 +1044,137 @@ class GitHubSearchGUI:
         except Exception as e:
             self._debug(f"Ошибка авто-импорта токена: {e}")
 
+        self._build_menu()
+        self._refresh_header_status()
+        self.root.after(400, self._check_and_show_onboarding)
+        self.root.after(1200, self._start_background_update_check)
+
+    def _build_menu(self) -> None:
+        menubar = Menu(self.root)
+
+        help_menu = Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Мастер первого запуска...", command=self._open_onboarding_wizard)
+        help_menu.add_command(label="Проверить обновления...", command=self._open_update_dialog)
+        help_menu.add_separator()
+        help_menu.add_command(label="Открыть репозиторий GitHub", command=lambda: webbrowser.open(GITHUB_REPO_URL))
+        help_menu.add_command(label="Документация", command=lambda: webbrowser.open(f"{GITHUB_REPO_URL}#readme"))
+        help_menu.add_separator()
+        help_menu.add_command(label="О программе", command=self._open_about_dialog)
+
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        self.root.config(menu=menubar)
+
+    def _open_about_dialog(self) -> None:
+        AboutDialog(self.root)
+
+    def _open_update_dialog(self) -> None:
+        UpdateCheckerDialog(self.root)
+
+    def _open_onboarding_wizard(self) -> None:
+        def on_wizard_finish(data: dict):
+            if data.get("workspace"):
+                self.output_var.set(data["workspace"])
+            ai_mode = data.get("ai_mode", "local")
+            if ai_mode == "local":
+                self.ai_provider_type_var.set(AI_PROVIDER_OLLAMA)
+                self.ai_endpoint_var.set("http://localhost:11434")
+                if data.get("ollama_model"):
+                    self.ai_model_var.set(data["ollama_model"])
+            elif ai_mode == "cloud":
+                self.ai_provider_type_var.set(AI_PROVIDER_OPENAI_COMPATIBLE)
+                provider = data.get("cloud_provider", "DeepSeek")
+                if provider == "DeepSeek":
+                    self.ai_endpoint_var.set("https://api.deepseek.com/v1")
+                    self.ai_model_var.set("deepseek-chat")
+                else:
+                    self.ai_endpoint_var.set("https://api.openai.com/v1")
+                    self.ai_model_var.set("gpt-4o-mini")
+                cloud_key = data.get("cloud_key", "")
+                if cloud_key:
+                    secret_name = secret_name_for_ai_provider(AI_PROVIDER_OPENAI_COMPATIBLE, self.ai_endpoint_var.get())
+                    try:
+                        store_secret(secret_name, cloud_key)
+                    except Exception as e:
+                        self._debug(f"Could not store wizard cloud key: {e}")
+            elif ai_mode == "none":
+                self.ai_filter_enabled_var.set(False)
+
+            if data.get("preset"):
+                self.query_var.set(data["preset"]["query"])
+                if self.ai_task_text:
+                    self.ai_task_text.delete("1.0", END)
+                    self.ai_task_text.insert("1.0", data["preset"]["ai_task"])
+            self._save_settings(first_run_completed=True)
+            self._refresh_header_status()
+            self._refresh_saved_ai_key_status()
+
+        FirstRunWizard(self.root, on_finish_callback=on_wizard_finish)
+
+    def _check_and_show_onboarding(self) -> None:
+        settings_exist = SETTINGS_FILE.exists()
+        has_token = False
+        try:
+            has_token = has_secret(DEFAULT_SECRET_NAME)
+        except Exception:
+            pass
+
+        first_run = False
+        if not settings_exist:
+            first_run = True
+        else:
+            try:
+                payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+                if not payload.get("first_run_completed", False) and not has_token:
+                    first_run = True
+            except Exception:
+                first_run = True
+
+        if first_run:
+            self._open_onboarding_wizard()
+
+    def _start_background_update_check(self) -> None:
+        def _worker():
+            checker = UpdateChecker()
+            result = checker.check_for_updates(force=False)
+            if result.update_available and result.latest_release:
+                self.root.after(0, lambda: self._prompt_update_available(result.latest_release))
+        threading.Thread(target=_worker, daemon=True, name="UpdateCheckThread").start()
+
+    def _prompt_update_available(self, release: ReleaseInfo) -> None:
+        if hasattr(self, "_update_prompted") and self._update_prompted:
+            return
+        self._update_prompted = True
+        dlg = UpdateCheckerDialog(self.root)
+        dlg.latest_release = release
+        dlg.status_var.set(f"🎉 Доступна новая версия: v{release.version_str}!")
+        dlg.notes_box.delete("1.0", END)
+        dlg.notes_box.insert("1.0", release.body_markdown or "Нет описания изменений.")
+        dlg.btn_action.configure(
+            text="⬇ Обновить и перезапустить",
+            command=dlg._start_download,
+        )
+
+    def _refresh_header_status(self) -> None:
+        if not hasattr(self, "status_pill_widget") or not self.status_pill_widget.winfo_exists():
+            return
+
+        try:
+            has_tok = has_secret(DEFAULT_SECRET_NAME)
+        except Exception:
+            has_tok = False
+
+        if has_tok:
+            self.status_pill_widget.github_text_var.set("🐙 GitHub: Подключен (5000/5000)")
+        else:
+            self.status_pill_widget.github_text_var.set("🐙 GitHub: Анонимный (60/60)")
+
+        ai_prov = self.ai_provider_type_var.get().strip()
+        ai_model = self.ai_model_var.get().strip() or "none"
+        self.status_pill_widget.update_ai(ai_prov.capitalize(), ai_model, ready=True)
+
+        out_path = Path(self.output_var.get().strip() or str(Path.home() / "Downloads"))
+        self.status_pill_widget.update_disk(out_path)
+
     def _toggle_theme(self) -> None:
         sv_ttk.toggle_theme()
         dark = sv_ttk.get_theme() == "dark"
@@ -438,23 +1204,38 @@ class GitHubSearchGUI:
         container.pack(fill=BOTH, expand=True)
 
         header_frame = ttk.Frame(container)
-        header_frame.pack(fill="x", pady=(0, 16))
+        header_frame.pack(fill="x", pady=(0, 12))
 
         header_top = ttk.Frame(header_frame)
         header_top.pack(fill="x")
         
-        title = ttk.Label(header_top, text="Сборщик GitHub-репозиториев", font=("Segoe UI Variable Display", 18, "bold"))
+        title = ttk.Label(header_top, text=f"{APP_DISPLAY_NAME} v{__version__}", font=("Segoe UI Variable Display", 18, "bold"))
         title.pack(side=LEFT)
         
         theme_btn = ttk.Button(header_top, text="🌓 Тема", command=self._toggle_theme)
-        theme_btn.pack(side=RIGHT)
+        theme_btn.pack(side=RIGHT, padx=(4, 0))
+
+        update_btn = ttk.Button(header_top, text="🔄 Обновления", command=self._open_update_dialog)
+        update_btn.pack(side=RIGHT, padx=(4, 0))
+
+        about_btn = ttk.Button(header_top, text="ℹ О программе", command=self._open_about_dialog)
+        about_btn.pack(side=RIGHT, padx=(4, 0))
+
         self.header_subtitle = ttk.Label(
             header_frame,
             text="Шаг 1: опишите задачу ИИ. Шаг 2: при необходимости поправьте параметры. Шаг 3: запуск.",
             font=("Segoe UI Variable Text", 11),
             foreground="#8b949e"
         )
-        self.header_subtitle.pack(anchor=W, pady=(0, 8))
+        self.header_subtitle.pack(anchor=W, pady=(0, 4))
+
+        self.status_pill_widget = HeaderStatusWidget(
+            header_frame,
+            on_github_click=lambda: self.notebook.select(self.tab_tokens),
+            on_ai_click=lambda: self.notebook.select(self.tab_ai),
+            on_disk_click=lambda: self.notebook.select(self.tab_main),
+        )
+        self.status_pill_widget.pack(fill="x", pady=(2, 6))
 
         bottom_container = ttk.Frame(container)
         bottom_container.pack(side="bottom", fill=BOTH)
@@ -1434,10 +2215,19 @@ class GitHubSearchGUI:
         self._refresh_saved_ai_key_status()
         self._debug("Настройки успешно загружены из gui_settings.json.")
 
-    def _save_settings(self) -> None:
+    def _save_settings(self, first_run_completed: bool | None = None) -> None:
         sort_value = SORT_OPTIONS.get(self.sort_var.get(), self.sort_var.get())
         order_value = ORDER_OPTIONS.get(self.order_var.get(), self.order_var.get())
         ai_task = self.ai_task_text.get("1.0", END).strip() if self.ai_task_text else ""
+        existing_first_run = False
+        if SETTINGS_FILE.exists():
+            try:
+                existing_payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+                existing_first_run = bool(existing_payload.get("first_run_completed", False))
+            except Exception:
+                pass
+        final_first_run = bool(first_run_completed) if first_run_completed is not None else existing_first_run
+
         payload = {
             "query": self.query_var.get().strip(),
             "output": self.output_var.get().strip(),
@@ -1492,6 +2282,7 @@ class GitHubSearchGUI:
             "export_csv": self.export_csv_var.get(),
             "export_ai_ready": self.export_ai_ready_var.get(),
             "ai_task": ai_task,
+            "first_run_completed": final_first_run,
         }
         atomic_write_text(SETTINGS_FILE, json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         self._debug("Настройки сохранены в gui_settings.json.")
