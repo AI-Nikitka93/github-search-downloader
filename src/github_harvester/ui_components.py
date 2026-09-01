@@ -809,3 +809,168 @@ class ModernTreeview(ttk.Frame):
             clean_tags = [t for t in current_tags if t not in ("evenrow", "oddrow")]
             stripe = "evenrow" if index % 2 == 0 else "oddrow"
             self.tree.item(k, tags=(stripe, *clean_tags))
+
+
+# ==============================================================================
+# 7. TYPOGRAPHY SYSTEM (Typography)
+# ==============================================================================
+
+class Typography:
+    """Standardized typography hierarchy with automatic fallback."""
+    HERO_TITLE = ("Segoe UI Variable Display", 18, "bold")
+    SECTION_HEADER = ("Segoe UI Variable Display", 13, "bold")
+    CARD_TITLE = ("Segoe UI Variable Display", 11, "bold")
+    BODY_SEMIBOLD = ("Segoe UI Variable Text", 10, "bold")
+    BODY = ("Segoe UI Variable Text", 10)
+    CAPTION = ("Segoe UI Variable Text", 9)
+    CAPTION_MUTED = ("Segoe UI Variable Text", 8)
+    MONO_CODE = ("Cascadia Code", 10)
+
+
+# ==============================================================================
+# 8. SEGMENTED PILL TOGGLE (SegmentedPillToggle)
+# ==============================================================================
+
+class SegmentedPillToggle(tk.Frame):
+    """
+    Modern segmented control container (e.g. [ 🚀 Полный цикл ] [ 📋 Только поиск ]).
+    Provides smooth active card styling, hover feedback, and binds to a Tkinter Variable.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        options: Sequence[tuple[str, object, str]],  # (Label text, value, icon/emoji)
+        variable: tk.Variable,
+        on_change: Callable[[object], None] | None = None,
+        height: int = 34,
+        **kwargs,
+    ):
+        self.options = list(options)
+        self.variable = variable
+        self.on_change = on_change
+        self.btn_height = height
+
+        bg_col = UIColors.DARK_BG_CANVAS if UIColors.is_dark() else UIColors.LIGHT_BG_SUBTLE
+        border_col = UIColors.card_border()
+        super().__init__(
+            parent,
+            bg=bg_col,
+            highlightthickness=1,
+            highlightbackground=border_col,
+            padx=3,
+            pady=3,
+            **kwargs,
+        )
+
+        self._buttons: list[tk.Label] = []
+        self._build_buttons()
+        self.variable.trace_add("write", lambda *a: self._sync_selection())
+        self._sync_selection()
+
+    def _build_buttons(self):
+        for lbl_text, val, icon in self.options:
+            btn = tk.Label(
+                self,
+                text=f"{icon} {lbl_text}".strip() if icon else lbl_text,
+                font=("Segoe UI Variable Display", 9, "bold"),
+                cursor="hand2",
+                padx=14,
+                pady=5,
+            )
+            btn.pack(side="left", padx=2, fill="y")
+            btn.bind("<Button-1>", lambda e, v=val: self._select(v))
+            self._buttons.append(btn)
+
+    def _select(self, val):
+        self.variable.set(val)
+        if self.on_change:
+            self.on_change(val)
+
+    def _sync_selection(self):
+        cur_val = self.variable.get()
+        is_dark = UIColors.is_dark()
+        active_bg = UIColors.DARK_ACCENT_BLUE if is_dark else UIColors.LIGHT_ACCENT_BLUE
+        active_fg = "#ffffff"
+        inactive_bg = self["bg"]
+        inactive_fg = UIColors.DARK_FG_SECONDARY if is_dark else UIColors.LIGHT_FG_SECONDARY
+
+        for idx, (_, val, _) in enumerate(self.options):
+            btn = self._buttons[idx]
+            if str(val) == str(cur_val) or val == cur_val:
+                btn.configure(bg=active_bg, fg=active_fg)
+            else:
+                btn.configure(bg=inactive_bg, fg=inactive_fg)
+
+
+# ==============================================================================
+# 9. ANIMATED SMOOTH PROGRESS BAR (AnimatedProgressBar)
+# ==============================================================================
+
+class AnimatedProgressBar(tk.Frame):
+    """
+    Smooth physics-interpolated progress bar with 60fps lerp animation and glowing pulse.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        height: int = 12,
+        accent_color: str | None = None,
+        **kwargs,
+    ):
+        self.bar_height = height
+        self.accent_color = accent_color or (UIColors.DARK_ACCENT_BLUE if UIColors.is_dark() else UIColors.LIGHT_ACCENT_BLUE)
+        self.target_percent = 0.0
+        self.current_percent = 0.0
+        self._anim_id = None
+
+        bg_col = parent["bg"] if "bg" in parent.keys() else UIColors.card_bg()
+        super().__init__(parent, bg=bg_col, **kwargs)
+
+        self.canvas = tk.Canvas(
+            self,
+            height=height,
+            bg=UIColors.DARK_BG_CANVAS if UIColors.is_dark() else UIColors.LIGHT_BG_SUBTLE,
+            highlightthickness=1,
+            highlightbackground=UIColors.card_border(),
+            bd=0,
+        )
+        self.canvas.pack(fill="x", expand=True)
+        self.canvas.bind("<Configure>", lambda e: self._draw())
+
+    def set_progress(self, percent: float, animate: bool = True):
+        """Sets target progress from 0.0 to 100.0."""
+        self.target_percent = max(0.0, min(100.0, float(percent)))
+        if not animate:
+            self.current_percent = self.target_percent
+            self._draw()
+            return
+        if self._anim_id is None:
+            self._animate_step()
+
+    def _animate_step(self):
+        diff = self.target_percent - self.current_percent
+        if abs(diff) < 0.2:
+            self.current_percent = self.target_percent
+            self._anim_id = None
+            self._draw()
+            return
+
+        self.current_percent += diff * 0.25
+        self._draw()
+        self._anim_id = self.after(16, self._animate_step)
+
+    def _draw(self):
+        self.canvas.delete("all")
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+
+        fill_w = int((self.current_percent / 100.0) * w)
+        if fill_w > 0:
+            fill_col = self.accent_color
+            if self.current_percent >= 100.0:
+                fill_col = UIColors.DARK_ACCENT_GREEN if UIColors.is_dark() else UIColors.LIGHT_ACCENT_GREEN
+            self.canvas.create_rectangle(0, 0, fill_w, h, fill=fill_col, outline=fill_col)

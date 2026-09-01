@@ -181,6 +181,9 @@ from github_harvester.ui_components import (
     PillBadge,
     AccentButton,
     ModernTreeview,
+    Typography,
+    SegmentedPillToggle,
+    AnimatedProgressBar,
     register_custom_ttk_styles,
 )
 
@@ -2202,19 +2205,26 @@ class GitHubSearchGUI:
     def _build_actions(self, parent: ttk.Frame) -> None:
         mode_frame = ttk.Frame(parent)
         mode_frame.pack(fill="x", pady=(8, 0))
-        ttk.Label(mode_frame, text="Режим работы:", font=("Segoe UI Variable Display", 10, "bold")).pack(side="left", padx=(0, 16))
-        
-        def update_start_btn():
-            if self.dry_run_var.get():
-                self.start_button.config(text="🔍 Найти и Собрать список")
-            else:
-                self.start_button.config(text="🚀 Найти и Скачать код")
+        ttk.Label(mode_frame, text="Режим работы:", font=("Segoe UI Variable Display", 10, "bold")).pack(side="left", padx=(0, 12))
 
-        r1 = ttk.Radiobutton(mode_frame, text="🚀 Полный цикл (Поиск + Скачивание кода)", variable=self.dry_run_var, value=False, command=update_start_btn)
-        r1.pack(side="left", padx=(0, 16))
-        
-        r2 = ttk.Radiobutton(mode_frame, text="📋 Только поиск (Собрать список, без скачивания)", variable=self.dry_run_var, value=True, command=update_start_btn)
-        r2.pack(side="left", padx=(0, 16))
+        def update_start_btn(val=None):
+            if self.dry_run_var.get():
+                if self.start_button:
+                    self.start_button.config(text="🔍 Найти и Собрать список")
+            else:
+                if self.start_button:
+                    self.start_button.config(text="🚀 Найти и Скачать код")
+
+        self.mode_toggle = SegmentedPillToggle(
+            mode_frame,
+            options=[
+                ("Полный цикл (Поиск + Скачивание)", False, "🚀"),
+                ("Только поиск (Без скачивания)", True, "📋"),
+            ],
+            variable=self.dry_run_var,
+            on_change=update_start_btn,
+        )
+        self.mode_toggle.pack(side="left")
 
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(12, 12))
@@ -2281,13 +2291,16 @@ class GitHubSearchGUI:
         else:
             self.status_var.set(new_status)
 
+    SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
     def _animate_status(self) -> None:
         if not self._animation_active:
             return
+        frame = self.SPINNER_FRAMES[self._animation_step % len(self.SPINNER_FRAMES)]
         dots = "." * (self._animation_step % 4)
-        self.status_var.set(f"{self._base_status_text}{dots}")
+        self.status_var.set(f"{frame} {self._base_status_text}{dots}")
         self._animation_step += 1
-        self._animation_after_id = self.root.after(400, self._animate_status)
+        self._animation_after_id = self.root.after(120, self._animate_status)
 
     def _build_log(self, parent: ttk.Frame) -> None:
         log_frame = ttk.Frame(parent)
