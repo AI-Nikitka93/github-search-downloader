@@ -106,7 +106,7 @@ jobs:
           }
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2.0.8
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: "v${{ steps.vars.outputs.version }}"
           name: "GitHub Search & Downloader v${{ steps.vars.outputs.version }}"
