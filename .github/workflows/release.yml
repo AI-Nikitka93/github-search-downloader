@@ -42,7 +42,7 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5.1.1
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: "pip"
